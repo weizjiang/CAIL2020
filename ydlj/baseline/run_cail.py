@@ -193,8 +193,9 @@ if __name__ == "__main__":
     model = BertSupportNet(config=args, encoder=encoder)
     if args.trained_weight is not None:
         model.load_state_dict(torch.load(args.trained_weight))
-    model.to('cuda')
-
+    if args.model_gpu != '-1':
+        model.to('cuda')
+    
     # Initialize optimizer and criterions
     lr = args.lr
     t_total = len(Full_Loader) * args.epochs // args.gradient_accumulation_steps

@@ -38,21 +38,27 @@ class DataIteratorPack(object):
         context_mask = torch.LongTensor(self.bsz, 512)
         segment_idxs = torch.LongTensor(self.bsz, 512)
 
-       
+        if self.device.startswith('cuda'):
+            query_mapping = torch.Tensor(self.bsz, 512).cuda(self.device)
+            start_mapping = torch.Tensor(self.bsz, self.sent_limit, 512).cuda(self.device)
+            all_mapping = torch.Tensor(self.bsz, 512, self.sent_limit).cuda(self.device)
 
-        query_mapping = torch.Tensor(self.bsz, 512).cuda(self.device)
-        start_mapping = torch.Tensor(self.bsz, self.sent_limit, 512).cuda(self.device)
-        all_mapping = torch.Tensor(self.bsz, 512, self.sent_limit).cuda(self.device)
+            # Label tensor
+            y1 = torch.LongTensor(self.bsz).cuda(self.device)
+            y2 = torch.LongTensor(self.bsz).cuda(self.device)
+            q_type = torch.LongTensor(self.bsz).cuda(self.device)
+            is_support = torch.FloatTensor(self.bsz, self.sent_limit).cuda(self.device)
 
+        else:
+            query_mapping = torch.Tensor(self.bsz, 512)
+            start_mapping = torch.Tensor(self.bsz, self.sent_limit, 512)
+            all_mapping = torch.Tensor(self.bsz, 512, self.sent_limit)
 
-        # Label tensor
-        y1 = torch.LongTensor(self.bsz).cuda(self.device)   
-        y2 = torch.LongTensor(self.bsz).cuda(self.device)
-        q_type = torch.LongTensor(self.bsz).cuda(self.device)   
-        is_support = torch.FloatTensor(self.bsz, self.sent_limit).cuda(self.device)
-
-
-        
+            # Label tensor
+            y1 = torch.LongTensor(self.bsz)
+            y2 = torch.LongTensor(self.bsz)
+            q_type = torch.LongTensor(self.bsz)
+            is_support = torch.FloatTensor(self.bsz, self.sent_limit)
 
         while True:
             if self.example_ptr >= len(self.features):

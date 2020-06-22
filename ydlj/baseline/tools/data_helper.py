@@ -170,7 +170,8 @@ class DataHelper:
     def dev_loader(self):
         return self.DataIterator(*self.load_dev(),   
                                  bsz=self.config.eval_batch_size,
-                                 device='cuda:{}'.format(self.config.model_gpu),
+                                 device='cuda:{}'.format(self.config.model_gpu
+                                                         ) if self.config.model_gpu != '-1' else 'cpu',
                                  sent_limit=self.sent_limit,   # 25
                                  entity_limit=self.entity_limit,
                                  sequential=True,
@@ -180,7 +181,8 @@ class DataHelper:
     def train_loader(self):
         return self.DataIterator(*self.load_train(),   # example, feature, graph
                                  bsz=self.config.batch_size,
-                                 device='cuda:{}'.format(self.config.model_gpu),   
+                                 device='cuda:{}'.format(self.config.model_gpu
+                                                         ) if self.config.model_gpu != '-1' else 'cpu',
                                  sent_limit=self.sent_limit,
                                  entity_limit=self.entity_limit,
                                  sequential=False
