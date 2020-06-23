@@ -120,7 +120,7 @@ def convert_cail2019_data():
 
                 qa_item = {
                     '_id': qa['id'],
-                    'context': context,
+                    'context': [context],
                     'question': qa['question'],
                     'answer': answer_text,
                     'supporting_facts': supporting_facts
