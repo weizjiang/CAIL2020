@@ -5,6 +5,7 @@ import string
 from collections import Counter
 import pickle
 
+
 def normalize_answer(s):
 
     def remove_articles(text):
@@ -49,6 +50,7 @@ def f1_score(prediction, ground_truth):
 def exact_match_score(prediction, ground_truth):
     return (normalize_answer(prediction) == normalize_answer(ground_truth))
 
+
 def update_answer(metrics, prediction, gold):
     em = exact_match_score(prediction, gold)
     f1, prec, recall = f1_score(prediction, gold)
@@ -57,6 +59,7 @@ def update_answer(metrics, prediction, gold):
     metrics['prec'] += prec
     metrics['recall'] += recall
     return em, prec, recall
+
 
 def update_sp(metrics, prediction, gold):
     cur_sp_pred = set(map(tuple, prediction))
@@ -80,10 +83,11 @@ def update_sp(metrics, prediction, gold):
     metrics['sp_recall'] += recall
     return em, prec, recall
 
+
 def eval(prediction_file, gold_file):
-    with open(prediction_file) as f:
+    with open(prediction_file, 'r', encoding='utf-8') as f:
         prediction = json.load(f)
-    with open(gold_file) as f:
+    with open(gold_file, 'r', encoding='utf-8') as f:
         gold = json.load(f)
 
     metrics = {'em': 0, 'f1': 0, 'prec': 0, 'recall': 0,
@@ -125,6 +129,13 @@ def eval(prediction_file, gold_file):
 
     print(metrics)
 
-if __name__ == '__main__':
-    eval(sys.argv[1], sys.argv[2])
 
+if __name__ == '__main__':
+    # eval(sys.argv[1], sys.argv[2])
+
+    # prediction_file = r'../data/dev_result.json'
+    prediction_file = r'../result/pred_seed_62_epoch_10_99999.json'
+
+    gold_file = r'../data/dev.json'
+
+    eval(prediction_file, gold_file)
