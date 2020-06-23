@@ -205,7 +205,7 @@ def read_examples( full_file):
 
         if len(ans_end_position) > 1:
             cnt += 1    
-        if key <10:
+        if type(key) is int and key < 10:
             print("qid {}".format(key))
             print("qas type {}".format(qas_type))
             print("doc tokens {}".format(doc_tokens))
