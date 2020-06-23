@@ -352,7 +352,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length, max_query_
         sup_fact_ids = [sent_id for sent_id in sup_fact_ids if sent_id < sent_num]
         if len(sup_fact_ids) != len(example.sup_fact_id):
             failed += 1
-        if example.qas_id <10:
+        if type(example.qas_id) is int and example.qas_id < 10:
             print("qid {}".format(example.qas_id))
             print("all_doc_tokens {}".format(all_doc_tokens))
             print("doc_input_ids {}".format(doc_input_ids))
