@@ -1,6 +1,9 @@
-date
-source ~/.bashrc
+#!/usr/bin/env bash
+# source ~/.bashrc
 # export PATH="/yrfs1/rc/zpchen/tools/anaconda9/bin:$PATH"
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/ssd/usr/local/cuda-9.2/lib64/
+echo $LD_LIBRARY_PATH
+date
 bert_dir='/home/jiangwei/work/bert/chinese_roberta_wwm_ext_pytorch/'
 python run_cail.py \
     --name train_v1 \
