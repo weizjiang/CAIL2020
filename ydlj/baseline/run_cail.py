@@ -17,7 +17,7 @@ from data_process import InputFeatures,Example
 try:
     from apex import amp
 except Exception:
-    print('Apex not imoport!')
+    print('Apex not imported!')
 
 
 import torch

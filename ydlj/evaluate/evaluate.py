@@ -127,14 +127,16 @@ def eval(prediction_file, gold_file):
     for k in metrics.keys():
         metrics[k] /= N
 
-    print(metrics)
+    print(json.dumps(metrics, indent=4))
 
 
 if __name__ == '__main__':
     # eval(sys.argv[1], sys.argv[2])
 
     # prediction_file = r'../data/dev_result.json'
-    prediction_file = r'../result/pred_seed_62_epoch_10_99999.json'
+    # prediction_file = r'../result/train_v1_pred_seed_62_epoch_10_99999.json'
+    prediction_file = r'../result/train_v2_pred_seed_5_epoch_9_2706.json'
+    # prediction_file = r'../result/train_v2_pred_seed_5_epoch_8_99999.json'
 
     gold_file = r'../data/dev.json'
 

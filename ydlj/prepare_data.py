@@ -46,10 +46,14 @@ def generate_dev_result():
         json.dump(dev_result, f_out, ensure_ascii=False, indent=4)
 
 
-def convert_cail2019_data():
+def convert_cail2019_data(separate_paragraph=False):
+
     input_file = r'C:\Works\DataSet\CAIL\CAIL2019\big_train_data.json'
     output_file = r'data\train_2019.json'
-    converted_file = r'data\train_2019_converted.json'
+    if separate_paragraph:
+        converted_file = r'data\train_2019_converted.json'
+    else:
+        converted_file = r'data\train_2019_1sentence_converted.json'
 
     # input_file = r'C:\Works\DataSet\CAIL\CAIL2019\dev_ground_truth.json'
     # output_file = r'data\dev_2019.json'
@@ -65,13 +69,13 @@ def convert_cail2019_data():
 
     converted_data = []
     for item in data['data']:
-        for paragrph in item['paragraphs']:
-            context_text = clean_text(paragrph['context'])
+        for paragraph in item['paragraphs']:
+            context_text = clean_text(paragraph['context'])
             sentences, sentence_spans = separate_sentence(context_text)
-            for qa in paragrph['qas']:
+            for qa in paragraph['qas']:
                 if qa['is_impossible'] == 'true':
                     answer_text = 'unknown'
-                    context = [paragrph['casename'], sentences]
+                    context = [paragraph['casename'], sentences if separate_paragraph else [context_text]]
                     supporting_facts = []
                 else:
                     # only one answer in train set
@@ -81,42 +85,47 @@ def convert_cail2019_data():
                         # 'YES'/'NO' answer
                         answer_text = answer['text'].lower()
                         # use whole paragrpah as a sentence, since no support fact info avaliable
-                        context = [paragrph['casename'], [context_text]]
-                        supporting_facts = [[paragrph['casename'], 0]]
+                        context = [paragraph['casename'], [context_text]]
+                        supporting_facts = [[paragraph['casename'], 0]]
                     else:
                         # span answer
                         answer_text = clean_text(answer['text'])
-                        # due to cleaning, need to re-find the answer text pos
-                        # it should be close to the original position
-                        answer_start = -1
-                        while True:
-                            if answer_start == -1:
-                                search_start = 0
-                            else:
-                                search_start = answer_start + len(answer_text)
-                            search_end = min(answer['answer_start'] + len(answer_text), len(context_text))
-                            find_pos = context_text[search_start:search_end].find(answer_text)
-                            if find_pos >= 0:
-                                answer_start = search_start + find_pos
-                            else:
-                                break
-                        assert(answer_start >= 0)
 
-                        sentence_idx = np.flatnonzero(
-                            np.logical_and(sentence_spans[:, 1] > answer_start,
-                                           sentence_spans[:, 0] < answer_start + len(answer_text))
-                        )
-                        if len(sentence_idx) == 1:
-                            # only use one sentence as the supporting fact, may be incomplete!
-                            context = [paragrph['casename'], sentences]
-                            supporting_facts = [[paragrph['casename'], int(sentence_idx[0])]]
-                        elif len(sentence_idx) > 1:
-                            # allow an answer span multiple sentences?
-                            context = [paragrph['casename'], sentences]
-                            supporting_facts = [[paragrph['casename'], int(idx)] for idx in sentence_idx]
+                        if separate_paragraph:
+                            # due to cleaning, need to re-find the answer text pos
+                            # it should be close to the original position
+                            answer_start = -1
+                            while True:
+                                if answer_start == -1:
+                                    search_start = 0
+                                else:
+                                    search_start = answer_start + len(answer_text)
+                                search_end = min(answer['answer_start'] + len(answer_text), len(context_text))
+                                find_pos = context_text[search_start:search_end].find(answer_text)
+                                if find_pos >= 0:
+                                    answer_start = search_start + find_pos
+                                else:
+                                    break
+                            assert(answer_start >= 0)
+
+                            sentence_idx = np.flatnonzero(
+                                np.logical_and(sentence_spans[:, 1] > answer_start,
+                                               sentence_spans[:, 0] < answer_start + len(answer_text))
+                            )
+                            if len(sentence_idx) == 1:
+                                # only use one sentence as the supporting fact, may be incomplete!
+                                context = [paragraph['casename'], sentences]
+                                supporting_facts = [[paragraph['casename'], int(sentence_idx[0])]]
+                            elif len(sentence_idx) > 1:
+                                # allow an answer span multiple sentences?
+                                context = [paragraph['casename'], sentences]
+                                supporting_facts = [[paragraph['casename'], int(idx)] for idx in sentence_idx]
+                            else:
+                                context = [paragraph['casename'], [context_text]]
+                                supporting_facts = [[paragraph['casename'], 0]]
                         else:
-                            context = [paragrph['casename'], [context_text]]
-                            supporting_facts = [[paragrph['casename'], 0]]
+                            context = [paragraph['casename'], [context_text]]
+                            supporting_facts = [[paragraph['casename'], 0]]
 
                 qa_item = {
                     '_id': qa['id'],

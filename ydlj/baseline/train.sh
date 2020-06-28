@@ -8,12 +8,13 @@ bert_dir='/home/jiangwei/work/bert/chinese_roberta_wwm_ext_pytorch/'
 python run_cail.py \
     --name train_v2 \
     --bert_model $bert_dir \
-    --data_dir ../data/data_combine2019 \
-    --batch_size 16 \
+    --data_dir ../data/data_combine2019_1sentence \
+    --batch_size 6 \
     --eval_batch_size 32 \
     --lr 1e-5 \
-    --gradient_accumulation_steps 1 \
+    --gradient_accumulation_steps 5 \
     --epochs 10 \
+    --model_gpu 0 \
 
 date
 
