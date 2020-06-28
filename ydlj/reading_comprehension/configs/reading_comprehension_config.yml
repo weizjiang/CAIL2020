@@ -1,0 +1,197 @@
+
+################################################################################
+# dataset parameters
+
+DataSet: {
+  # path
+  path: '../data/train_set.txt',
+
+  # the ratio of training set in the whole data set
+  # -1: use the pre-separated TrainSetFile and TestSetFile
+  # 0-1: use 'path' as the whole set
+  TrainPercentage: -1,
+
+  # train set file path
+  TrainSetFile: '../data/train.json',
+
+  # test set file path
+  TestSetFile: '../data/dev.json',
+  }
+
+################################################################################
+# word embedding parameters
+
+# word embedding type
+# 'pretrained': default, pre-trained word vectors loaded from word_embedding_file
+# 'bert': use the BERT model
+word_embedding_type: 'bert'
+
+# word embedding file
+word_embedding_file: ''
+
+# word embedding size
+# for 'pretrained' embedding, it should match the size in word_embedding_file
+# for 'bert' embedding, it should equal to 'hidden_size'
+word_embedding_size: 768
+
+# word ebedding trainable flag
+word_embedding_trainable: true
+
+BERT: {
+  # vocabulary file for the pretrained model
+  vocab_file: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\vocab.txt',
+  # vocab_file: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/vocab.txt',
+
+  # initial checkpoint of BERT model
+  init_checkpoint: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\bert_model.ckpt',
+  # init_checkpoint: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/bert_model.ckpt',
+
+  # bert model configurations
+  bert_config: {
+    "attention_probs_dropout_prob": 0.1,
+    "directionality": "bidi",
+    "hidden_act": "gelu",
+    "hidden_dropout_prob": 0.1,
+    "hidden_size": 768,
+    "initializer_range": 0.02,
+    "intermediate_size": 3072,
+    "max_position_embeddings": 512,
+    "num_attention_heads": 12,
+    "num_hidden_layers": 12,
+    "pooler_fc_size": 768,
+    "pooler_num_attention_heads": 12,
+    "pooler_num_fc_layers": 3,
+    "pooler_size_per_head": 128,
+    "pooler_type": "first_token_transform",
+    "type_vocab_size": 2,
+    "vocab_size": 21128
+    },
+
+  # frozen bert layers, only used when word_embedding_trainable is true
+  # default: empty
+  # 'embedding': embedding layer
+  # number: layer number
+  # start-end: from layer start to layer end (included)
+  frozen_layers: ['embedding', '0-10']
+  }
+
+################################################################################
+# sentence embedding parameters
+
+# sentence embedding size
+sentence_embed_size: 200
+
+# share sentence embedding for different score types
+sentence_embedding_shared_by_scores: false
+
+# sentence embedding model selection
+# 'CNN': CNN model
+# 'BiLSTM': BiLSTM model, with attention mechanism
+# 'PoolDense': Using the fist token and a dense layer, same as BERT pooling. Should only be used with BERT model.
+sentence_embedding_type: 'PoolDense'
+
+# dropout rate
+dropout_rate: 0.2
+
+# CNN configurations
+CNN: {
+  # number of layers
+  NumLayer: 3,
+
+  # filter size for each layer
+  FilterSize: [2, 2, 2],
+
+  # number of convolution output channels for each layer
+  ChannelSize: [256, 512, 512],
+
+  # stride size after the convolution for each layer
+  ConvStride: [1, 1, 1],
+
+  # max-pooling size for each layer
+  # For the last layer, setting '-1' means pooling over the whole time axis; otherwise, the time dimenstion and
+  # the channel dimention are flattened before passing to the full-connect layer, in which case max_sentence_len is
+  # assumed as the fixed sentence length after padding, not allowing different size for testing.
+  PoolSize: [2, 2, -1],
+
+  # activation of the final full-connection layer
+  # 'none': default, linear activation
+  # 'tanh': tanh
+  FcActivation: 'tanh'
+}
+
+# BiLSTM configurations
+BiLSTM: {
+  # number of layers
+  num_layer: 1,
+
+  # hidden state size for LSTM on each direction
+  hidden_size: 256,
+
+  # enable/disable attention
+  attention_enable: false
+}
+
+################################################################################
+# loss function parameters
+
+
+################################################################################
+# optimization parameters
+
+# optimizer
+# 'Adam' (default), 'BertAdam'
+optimizer: 'Adam'
+
+# learning rate base
+learning_rate_base: 0.0001
+
+# learning rate decay period, in number of steps
+learning_rate_decay_steps: 1000
+
+# learning rate exponential decay rate
+learning_rate_decay_rate: 0.95
+
+# the minimum learning rate
+learning_rate_min: 0.00001
+
+# momentum rate for the Momentum optimizer and the 1st momentum for the Adam optimizer
+momentum_rate: 0.9
+
+# the 2nd momentum for the Adam optimizer
+momentum_rate_2nd: 0.999
+
+# L2 regulizer coefficient
+L2_REG_LAMBDA: 0.000001
+
+# whether or not do L2 loss normalization using total number of parameters
+# default: false
+L2_Normalize: false
+
+# threshold to limit the gradient
+grad_threshold: 5.0
+
+# maximum sentence length for padding
+# It's only used as the default value to tokenization. The model can support dynamic sentence length input, except
+# for the case when PoolSize for CNN's last layer is specified. If using bert, the upper limit is 512.
+max_sentence_len: 512
+
+
+################################################################################
+# training parameters
+
+# number of epoches
+num_epoch: 10
+
+# batch_size
+batch_size: 200
+
+# period for model saving, in number of steps
+# default: 50
+save_period: 51
+
+# period for validation and best model saving, in number of steps
+# default: 20
+validate_period: 20
+
+################################################################################
+# other parameters
