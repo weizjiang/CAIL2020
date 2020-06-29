@@ -43,6 +43,9 @@ class ReadingComprehensionModel:
         else:
             raise ValueError("model_path doesn't exist: %s" % model_path)
 
+        # number of answer types, 0: span, 1: yes, 2: no, 3: unknown
+        self.num_answer_type = 4
+
     def initialize_config(self, config={}):
         self.max_sentence_len = config.get('max_sentence_len', 16)  # the default max sentence length for padding
         self.word_embed_type = config.get('word_embedding_type', 'pretrained')  # word embedding type
@@ -138,12 +141,15 @@ class ReadingComprehensionModel:
             self.input_sentence = tf.placeholder(tf.int32, [None, None], name="input_sentence")
             # shape: batch_size
             self.input_actual_length = tf.placeholder(tf.int32, [None], name='input_actual_length')
-            # shape: batch_size x 4
-            self.input_answer_type = tf.placeholder(tf.float32, shape=[None, 4], name="input_scores")
-            # shape: batch_size x 2
-            self.input_span_pos = tf.placeholder(tf.float32, shape=[None, 2], name="input_scores")
+            # shape: batch_size x num_answer_type
+            self.input_answer_type = tf.placeholder(tf.int32, shape=[None, self.num_answer_type],
+                                                    name="input_answer_type")
+            # shape: batch_size
+            self.input_span_start = tf.placeholder(tf.int32, shape=[None], name="input_span_start")
+            # shape: batch_size
+            self.input_span_end = tf.placeholder(tf.int32, shape=[None], name="input_span_end")
             # shape: batch_size x num_sentence
-            self.input_support_facts = tf.placeholder(tf.float32, shape=[None, None], name="input_scores")
+            self.input_support_facts = tf.placeholder(tf.int32, shape=[None, None], name="input_support_facts")
             # shape: bool scaler
             self.is_training = tf.placeholder(tf.bool, name="is_training")
 
@@ -170,10 +176,8 @@ class ReadingComprehensionModel:
         else:
             self.embeddings = None
 
-    def token_embedding_layer(self, tokens, actual_length):
+    def token_embedding_layer(self, tokens, input_mask):
         if self.word_embed_type == 'bert':
-            sentence_len = tf.shape(tokens)[1]
-            input_mask = tf.less(tf.range(0, sentence_len), tf.reshape(actual_length, (-1, 1)))
             # the original BERT model cannot to use placeholder self.is_training. Set to False: no dropout in bert model!
             bert_model = bert_modeling.BertModel(
                 config=self.bert_config,
@@ -475,8 +479,13 @@ class ReadingComprehensionModel:
         self.score_loss = tf.multiply(self.score_loss_weight, score_loss, name='score_loss')
 
     def build_graph(self):
+        batch_size = tf.shape(self.input_sentence)[0]
+        sentence_len = tf.shape(self.input_sentence)[1]
+        input_mask = tf.cast(tf.less(tf.range(0, sentence_len), tf.reshape(self.input_actual_length, (-1, 1))),
+                             tf.float32)
+
         # get the word embeddings
-        token_embedding = self.token_embedding_layer(self.input_sentence, self.input_actual_length)
+        token_embedding = self.token_embedding_layer(self.input_sentence, input_mask)
 
         span_logits = tf.layers.dense(
             token_embedding,
@@ -485,18 +494,27 @@ class ReadingComprehensionModel:
             kernel_initializer=tf.truncated_normal_initializer(mean=0, stddev=0.02)
         )
 
-        # calculate per-score cross entropy first, for alternate training
-        span_ce = tf.nn.sigmoid_cross_entropy_with_logits(labels=tf.one_hot(self.input_span_pos),
-                                                          logits=span_logits)
-        span_answer_flag = tf.equal(self.input_answer_type, 0.)
+        # decreas the logits for padding. Only use context mask?
+        span_logits = span_logits - 1e30 * tf.reshape(1 - input_mask, (batch_size, sentence_len, 1))
+
+        # softmax over all tokens of sentence length
+        span_start_ce = tf.nn.softmax_cross_entropy_with_logits(labels=tf.one_hot(self.input_span_start, sentence_len),
+                                                                logits=span_logits[:, :, 0])
+        span_end_ce = tf.nn.softmax_cross_entropy_with_logits(labels=tf.one_hot(self.input_span_end, sentence_len),
+                                                              logits=span_logits[:, :, 1])
+        span_ce = span_start_ce + span_end_ce
+        span_answer_flag = tf.equal(self.input_answer_type[:, 0], 1)
         span_loss = tf.reduce_mean(tf.gather(span_ce, tf.where(span_answer_flag)), name='span_loss')
 
+        # how to reduce on 1 token?
         type_logits = tf.layers.dense(
             token_embedding,
-            4,
+            self.num_answer_type,
             activation=None,
             kernel_initializer=tf.truncated_normal_initializer(mean=0, stddev=0.02)
         )
+
+        # type_ce =
 
         reg_vars = [v for v in self.get_trainable_variables() if v.name.find('bias') == -1]
         reg_loss = tf.contrib.layers.apply_regularization(self.regularizer, reg_vars)
