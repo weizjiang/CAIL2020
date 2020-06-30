@@ -11,11 +11,17 @@ DataSet: {
   # 0-1: use 'path' as the whole set
   TrainPercentage: -1,
 
-  # train set file path
-  TrainSetFile: '../data/train.json',
+  # train set example file path
+  TrainSetExampleFile: '../data/train_example.pkl.gz',
 
-  # test set file path
-  TestSetFile: '../data/dev.json',
+  # train set reature file path
+  TrainSetFeatureFile: '../data/train_feature.pkl.gz',
+
+  # dev set example file path
+  DevSetExampleFile: '../data/dev_example.pkl.gz',
+
+  # dev set reature file path
+  DevSetFeatureFile: '../data/dev_feature.pkl.gz',
   }
 
 ################################################################################
@@ -78,6 +84,14 @@ BERT: {
 ################################################################################
 # sentence embedding parameters
 
+# maximum input length for padding
+# It's only used as the default value to tokenization. The model can support dynamic input length, except
+# for the case when PoolSize for CNN's last layer is specified. If using bert, the upper limit is 512.
+max_input_len: 512
+
+# maximum number of sentences in one example
+max_num_sentence: 50
+
 # sentence embedding size
 sentence_embed_size: 200
 
@@ -109,7 +123,7 @@ CNN: {
 
   # max-pooling size for each layer
   # For the last layer, setting '-1' means pooling over the whole time axis; otherwise, the time dimenstion and
-  # the channel dimention are flattened before passing to the full-connect layer, in which case max_sentence_len is
+  # the channel dimention are flattened before passing to the full-connect layer, in which case max_input_len is
   # assumed as the fixed sentence length after padding, not allowing different size for testing.
   PoolSize: [2, 2, -1],
 
@@ -134,6 +148,14 @@ BiLSTM: {
 ################################################################################
 # loss function parameters
 
+# span loss weight
+span_loss_weight: 1.0
+
+# answer type loss weight
+answer_type_loss_weight: 1.0
+
+# support tact loss weight
+support_fact_loss_weight: 1.0
 
 ################################################################################
 # optimization parameters
@@ -170,12 +192,6 @@ L2_Normalize: false
 # threshold to limit the gradient
 grad_threshold: 5.0
 
-# maximum sentence length for padding
-# It's only used as the default value to tokenization. The model can support dynamic sentence length input, except
-# for the case when PoolSize for CNN's last layer is specified. If using bert, the upper limit is 512.
-max_sentence_len: 512
-
-
 ################################################################################
 # training parameters
 
@@ -183,7 +199,7 @@ max_sentence_len: 512
 num_epoch: 10
 
 # batch_size
-batch_size: 200
+batch_size: 2
 
 # period for model saving, in number of steps
 # default: 50

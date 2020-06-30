@@ -6,10 +6,12 @@ import os
 import sys
 import argparse
 import json
+import gzip
+import pickle
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from reading_comprehension.reading_comprehension_net import ReadingComprehensionModel
-
+from baseline.data_process import InputFeatures, Example
 
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
@@ -18,6 +20,17 @@ def parse_arguments(argv):
                         help='configuration file path', default='configs/reading_comprehension_config.yml')
 
     return parser.parse_args(argv)
+
+
+def open_dataset_file(file_name):
+    if file_name.endswith('.gz'):
+        return gzip.open(file_name, 'rb')
+    elif file_name.endswith('.pkl'):
+        return open(file_name, 'rb')
+    elif file_name.endswith('.json') or file_name.endswith('.txt'):
+        return open(file_name, 'r', encoding='utf-8')
+    else:
+        raise NotImplementedError
 
 
 if __name__ == '__main__':
@@ -34,18 +47,20 @@ if __name__ == '__main__':
     RCModel = ReadingComprehensionModel(config)
 
     DataSet = config.pop('DataSet')
-    TrainPercentage = DataSet.get('TrainPercentage', '-1')
-
-    with open(DataSet.get('TrainSetFile'), "r", encoding='utf-8') as f:
-        TrainSet = json.load(f)
-    with open(DataSet.get('TestSetFile'), "r", encoding='utf-8') as f:
-        TestSet = json.load(f)
+    with open_dataset_file(DataSet.get('TrainSetExampleFile')) as f:
+        train_set_examples = pickle.load(f)
+    with open_dataset_file(DataSet.get('TrainSetFeatureFile')) as f:
+        train_set_features = pickle.load(f)
+    with open_dataset_file(DataSet.get('DevSetExampleFile')) as f:
+        dev_set_examples = pickle.load(f)
+    with open_dataset_file(DataSet.get('DevSetFeatureFile')) as f:
+        dev_set_features = pickle.load(f)
 
     # # continue training
     # RCModel.load_model(r'runs\qe_20200222-235523', 'L')
 
-    RCModel.fit(train_set=TrainSet,
-                validation_set=TestSet,
+    RCModel.fit(train_set=train_set_features,
+                validation_set=dev_set_features,
                 epochs=config['num_epoch']
                 )
 

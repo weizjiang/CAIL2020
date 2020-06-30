@@ -7,9 +7,6 @@ import json
 import gzip
 import pickle
 from tqdm import tqdm
-from transformers import BertTokenizer
-
-
 
 
 class Example(object):
@@ -424,6 +421,8 @@ def _improve_answer_span(doc_tokens, input_start, input_end, tokenizer,
 
 
 if __name__ == '__main__':
+    from transformers import BertTokenizer
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--example_output", required=True, type=str)
     parser.add_argument("--feature_output", required=True, type=str)
