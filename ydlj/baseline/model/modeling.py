@@ -39,11 +39,15 @@ class SimplePredictionLayer(nn.Module):
 
         sp_state = all_mapping.unsqueeze(3) * input_state.unsqueeze(2)  # N x sent x 512 x 300
 
+        # remove non-sentence positions from max-pooling operation
+        sp_state = sp_state - 1e30 * (1 - all_mapping).unsqueeze(3)
         sp_state = sp_state.max(1)[0]
 
         sp_logits = self.sp_linear(sp_state)
 
-        type_state = torch.max(input_state, dim=1)[0]
+        # removing padding positions from max-pooling operation
+        contex_state = input_state - 1e30 * (1 - context_mask).unsqueeze(2)
+        type_state = torch.max(contex_state, dim=1)[0]
         type_logits = self.type_linear(type_state)
 
         # 找结束位置用的开始和结束位置概率之和
