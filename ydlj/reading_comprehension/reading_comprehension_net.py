@@ -15,6 +15,7 @@ import re
 
 from reading_comprehension.utils import checkmate as cm
 from reading_comprehension.utils.pipelines import truncate_by_separator, token_to_index as tokenize
+from reading_comprehension.utils.data_helpers import get_label_using_scores_by_threshold, cal_metric_batch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../libs'))
 from bert import modeling as bert_modeling
@@ -49,6 +50,9 @@ class ReadingComprehensionModel:
     def initialize_config(self, config={}):
         self.max_input_len = config.get('max_input_len', 16)  # the default max input length for padding
         self.max_num_sentence = config.get('max_num_sentence', 50)
+        self.max_answer_len = config.get('max_answer_len', 50)
+        self.support_fact_threshold = config.get('support_fact_threshold', 0.5)
+
         self.word_embed_type = config.get('word_embedding_type', 'pretrained')  # word embedding type
         self.word_embed_size = config.get('word_embedding_size', 200)  # dim of embedding
         self.word_embed_trainable = config.get('word_embedding_trainable', False)
@@ -93,8 +97,11 @@ class ReadingComprehensionModel:
                         for layer in range(start, end):
                             self.bert_frozen_layers.append('bert/encoder/layer_%d/' % layer)
 
-        self.sentence_embedding_type = config.get('sentence_embedding_type', 'CNN')
-        self.sentence_embed_size = config.get('sentence_embed_size', 1024)
+        self.answer_type_embedding_type = config.get('answer_type_embedding_type', 'FirstPoolDense')
+        self.answer_type_embed_size = config.get('answer_type_embed_size', 200)
+
+        self.sentence_embedding_type = config.get('sentence_embedding_type', 'MaxPoolDense')
+        self.sentence_embed_size = config.get('sentence_embed_size', 200)
         self.sentence_embedding_shared_by_scores = config.get('sentence_embedding_shared_by_scores', True)
 
         if self.sentence_embedding_type == 'CNN':
@@ -130,6 +137,7 @@ class ReadingComprehensionModel:
         self.batch_size = config.get('batch_size', 200)
         self.save_period = config.get('save_period', 50)
         self.validate_period = config.get('validate_period', 20)
+        self.validate_size = config.get('validate_size', 200)
 
     def initialize_session(self):
         print("start to initialize the variables ")
@@ -271,7 +279,7 @@ class ReadingComprehensionModel:
             )
             return final_outputs, final_state
 
-    def sentence_embedding_model(self, token_embedding, sentence_mask, embedding_type, name=''):
+    def sentence_embedding_model(self, token_embedding, sentence_mask, embedding_type, embedding_size, name=''):
         if name is not None and len(name) > 0:
             name_appendix = '_' + name
         else:
@@ -324,10 +332,10 @@ class ReadingComprehensionModel:
                         )
 
                     weights = tf.get_variable(
-                        name="fc_weights", shape=[fc_in.get_shape()[-1], self.sentence_embed_size]
+                        name="fc_weights", shape=[fc_in.get_shape()[-1], embedding_size]
                     )
 
-                    bias = tf.get_variable(name="fc_bias", shape=[self.sentence_embed_size])
+                    bias = tf.get_variable(name="fc_bias", shape=[embedding_size])
 
                     fc_in = tf.layers.dropout(fc_in, rate=self.dropout_rate, training=self.is_training)
                     fc_out = tf.matmul(fc_in, weights) + bias
@@ -339,12 +347,12 @@ class ReadingComprehensionModel:
 
         elif embedding_type == 'MaxPoolDense':
             with tf.variable_scope("MaxPoolDense" + name_appendix, reuse=tf.AUTO_REUSE):
-                pool_out = tf.reduce_max(token_embedding - 1e10 * tf.expand_dims(1 - sentence_mask, 2),
+                pool_out = tf.reduce_max(token_embedding - 100 * tf.expand_dims(1 - sentence_mask, 2),
                                          axis=1, keepdims=False, name="max_pool")
                 fc_in = tf.layers.dropout(pool_out, rate=self.dropout_rate, training=self.is_training)
                 fc_out = tf.layers.dense(
                     fc_in,
-                    self.sentence_embed_size,
+                    embedding_size,
                     activation=tf.tanh,
                     kernel_initializer=tf.truncated_normal_initializer(mean=0, stddev=0.02))
 
@@ -356,7 +364,7 @@ class ReadingComprehensionModel:
                 fc_in = tf.layers.dropout(first_token_tensor, rate=self.dropout_rate, training=self.is_training)
                 fc_out = tf.layers.dense(
                     fc_in,
-                    self.sentence_embed_size,
+                    embedding_size,
                     activation=tf.tanh,
                     kernel_initializer=tf.truncated_normal_initializer(mean=0, stddev=0.02))
 
@@ -399,7 +407,7 @@ class ReadingComprehensionModel:
                 with tf.variable_scope("full_connect", reuse=tf.AUTO_REUSE):
                     fc_out = tf.layers.dense(
                         fc_in,
-                        self.sentence_embed_size,
+                        embedding_size,
                         activation=tf.tanh,
                         kernel_initializer=tf.truncated_normal_initializer(mean=0, stddev=0.02))
 
@@ -424,22 +432,36 @@ class ReadingComprehensionModel:
             kernel_initializer=tf.truncated_normal_initializer(mean=0, stddev=0.02)
         )
 
-        # decreas the logits for padding. Only use context mask?
-        span_logits = span_logits - 1e30 * tf.expand_dims(1 - self.input_mask, 2)
+        # decrease the logits for padding and query tokens
+        contex_sentences_mask = tf.reduce_sum(self.input_sentence_mapping, axis=2, keepdims=True)
+        span_logits = span_logits - 100 * (1 - contex_sentences_mask)
+
+        # batch_size x max_sentence_length x max_sentence_length
+        span_logit_sum = tf.expand_dims(span_logits[:, :, 0], axis=2) + tf.expand_dims(span_logits[:, :, 1], axis=1)
+        span_mask = tf.constant(
+            np.tril(np.triu(np.ones((self.max_input_len, self.max_input_len)), 0), self.max_answer_len),
+            dtype=tf.float32)
+        span_logit_sum = span_logit_sum - 100 * tf.expand_dims(1 - span_mask[:sentence_len, :sentence_len], 0)
+        self.span_start_pos = tf.arg_max(tf.reduce_max(span_logit_sum, axis=2), dimension=1, name='span_start_pos')
+        self.span_end_pos = tf.arg_max(tf.reduce_max(span_logit_sum, axis=1), dimension=1, name='span_end_pos')
 
         # softmax over all tokens of sentence length
-        self.span_start_prob = tf.softmax(span_logits[:, :, 0], name='span_start_prob')
-        self.span_end_prob = tf.softmax(span_logits[:, :, 1], name='span_end_prob')
+        self.span_start_prob = tf.nn.softmax(span_logits[:, :, 0], name='span_start_prob')
+        self.span_end_prob = tf.nn.softmax(span_logits[:, :, 1], name='span_end_prob')
         span_start_ce = tf.nn.softmax_cross_entropy_with_logits(labels=tf.one_hot(self.input_span_start, sentence_len),
                                                                 logits=span_logits[:, :, 0])
         span_end_ce = tf.nn.softmax_cross_entropy_with_logits(labels=tf.one_hot(self.input_span_end, sentence_len),
                                                               logits=span_logits[:, :, 1])
         span_ce = span_start_ce + span_end_ce
-        span_answer_flag = tf.equal(self.input_answer_type, 0)
-        self.span_loss = tf.reduce_mean(tf.gather(span_ce, tf.where(span_answer_flag)), name='span_loss')
+        span_answer_samples = tf.where(tf.equal(self.input_answer_type, 0))
+        span_loss = tf.cond(tf.equal(tf.size(span_answer_samples), 0),
+                            lambda: tf.constant(0, tf.float32),
+                            lambda: tf.reduce_mean(tf.gather(span_ce, span_answer_samples)))
+        self.span_loss = tf.identity(span_loss, name='span_loss')
 
         answer_type_embedding = self.sentence_embedding_model(token_embedding, self.input_mask,
-                                                              embedding_type='FirstPoolDense',
+                                                              embedding_type=self.answer_type_embedding_type,
+                                                              embedding_size=self.answer_type_embed_size,
                                                               name='answer_type')
         answer_type_logits = tf.layers.dense(
             answer_type_embedding,
@@ -448,7 +470,7 @@ class ReadingComprehensionModel:
             kernel_initializer=tf.truncated_normal_initializer(mean=0, stddev=0.02)
         )
 
-        self.answer_type_prob = tf.softmax(answer_type_logits, name='answer_type_prob')
+        self.answer_type_prob = tf.nn.softmax(answer_type_logits, name='answer_type_prob')
 
         self.answer_type_loss = tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits(labels=tf.one_hot(self.input_answer_type, self.num_answer_type),
@@ -465,7 +487,8 @@ class ReadingComprehensionModel:
 
         sentence_mask = tf.reshape(tf.transpose(self.input_sentence_mapping, perm=[0, 2, 1]), (-1, sentence_len))
         sentence_embedding = self.sentence_embedding_model(sentence_token_embedding, sentence_mask,
-                                                           embedding_type='MaxPoolDense',
+                                                           embedding_type=self.sentence_embedding_type,
+                                                           embedding_size=self.sentence_embed_size,
                                                            name='support_fact_sentence')
 
         sentence_embedding = tf.reshape(sentence_embedding, (batch_size, -1, self.sentence_embed_size))
@@ -481,6 +504,8 @@ class ReadingComprehensionModel:
 
         self.support_fact_prob = tf.sigmoid(support_fact_logits, name='support_fact_prob')
 
+        # only consier answer type not 'unknown'? use labled or predicted type?
+        # maybe no need, since the train data has valid support fact label (empty) for 'unknow' case
         self.support_fact_loss = tf.reduce_mean(
             tf.nn.sigmoid_cross_entropy_with_logits(labels=self.input_support_facts,
                                                     logits=support_fact_logits),
@@ -708,9 +733,11 @@ class ReadingComprehensionModel:
 
             for epoch in range(1, epochs + 1):
                 for batch in self.episode_iter(train_set):
-                    (span_loss, answer_type_loss, support_fact_loss, reg_loss, loss, lr, _, global_step
+                    (span_start_pos, span_end_pos, answer_type_prob, support_fact_prob,
+                     span_loss, answer_type_loss, support_fact_loss, reg_loss, loss, lr, _, global_step
                      ) = self.session.run(
-                        [self.span_loss, self.answer_type_loss, self.support_fact_loss, self.reg_loss, self.loss,
+                        [self.span_start_pos, self.span_end_pos, self.answer_type_prob, self.support_fact_prob,
+                         self.span_loss, self.answer_type_loss, self.support_fact_loss, self.reg_loss, self.loss,
                          self.learning_rate, self.train_op, self.global_step],
                         feed_dict={
                             self.input_sentence: batch['context_idxs'],
@@ -724,9 +751,29 @@ class ReadingComprehensionModel:
                         }
                     )
 
-                    print("Epoch: {}\t Count: {}\t span_loss:{:.4f}\t answer_type_loss:{:.4f}\t "
-                          "support_fact_loss:{:.4f}\t reg_loss:{:.4f}\t loss:{:.4f}".format(
-                            epoch, global_step, span_loss, answer_type_loss, support_fact_loss, reg_loss, loss))
+                    (answer_type_accu,
+                     span_iou,
+                     answer_score,
+                     support_fact_accu,
+                     support_fact_recall,
+                     support_fact_precision,
+                     support_fact_f1,
+                     joint_metric
+                     ) = self.evaluate(
+                        {
+                            'span_start_pos': span_start_pos,
+                            'span_end_pos': span_end_pos,
+                            'answer_type_prob': answer_type_prob,
+                            'support_fact_prob': support_fact_prob
+                        },
+                        batch
+                    )
+
+                    print("Epoch: {}\tCount: {}\tspan_loss:{:.4f}\tanswer_type_loss:{:.4f}\t"
+                          "support_fact_loss:{:.4f}\treg_loss:{:.4f}\tloss:{:.4f}\tanswer_score:{:.4f}\t"
+                          "support_fact_f1:{:.4f}\tjoint_metric:{:.4f}".format(
+                            epoch, global_step, span_loss, answer_type_loss, support_fact_loss, reg_loss, loss,
+                            answer_score, support_fact_f1, joint_metric))
 
                     train_summary = tf.Summary(value=[
                         tf.Summary.Value(tag="span_loss",
@@ -741,6 +788,22 @@ class ReadingComprehensionModel:
                                          simple_value=loss),
                         tf.Summary.Value(tag="learning_rate",
                                          simple_value=lr),
+                        tf.Summary.Value(tag="answer_type_accu",
+                                         simple_value=answer_type_accu),
+                        tf.Summary.Value(tag="span_iou",
+                                         simple_value=span_iou),
+                        tf.Summary.Value(tag="answer_score",
+                                         simple_value=answer_score),
+                        tf.Summary.Value(tag="support_fact_accu",
+                                         simple_value=support_fact_accu),
+                        tf.Summary.Value(tag="support_fact_recall",
+                                         simple_value=support_fact_recall),
+                        tf.Summary.Value(tag="support_fact_precision",
+                                         simple_value=support_fact_precision),
+                        tf.Summary.Value(tag="support_fact_f1",
+                                         simple_value=support_fact_f1),
+                        tf.Summary.Value(tag="joint_metric",
+                                         simple_value=joint_metric)
                     ])
                     summary_writer.add_summary(train_summary, global_step)
 
@@ -748,19 +811,32 @@ class ReadingComprehensionModel:
                         saver.save(self.session, checkpoint_dir + "/model", global_step=self.global_step)
 
                     if global_step % self.validate_period == 0:
-                        # only use one batch for validation
-                        val_batch_size = self.batch_size
-                        num_val_batch = int((len(validation_set) - 1) / val_batch_size) + 1
-                        val_batch_idx = int(global_step / self.validate_period) % num_val_batch
-                        val_batch_start = val_batch_idx * val_batch_size
-                        val_batch_end = min((val_batch_idx + 1) * val_batch_size, len(validation_set))
-                        for val_batch in self.episode_iter(validation_set[val_batch_start:val_batch_end],
-                                                           val_batch_size,
+                        num_val_sets = int((len(validation_set) - 1) / self.validate_size) + 1
+                        val_set_idx = int(global_step / self.validate_period) % num_val_sets
+                        val_set_start = val_set_idx * self.validate_size
+                        val_set_end = min((val_set_idx + 1) * self.validate_size, len(validation_set))
+
+                        val_span_loss_list = []
+                        val_answer_type_loss_list = []
+                        val_support_fact_loss_list = []
+                        val_loss_list = []
+                        val_answer_type_accu_list = []
+                        val_span_iou_list = []
+                        val_answer_score_list = []
+                        val_support_fact_accu_list = []
+                        val_support_fact_recall_list = []
+                        val_support_fact_precision_list = []
+                        val_support_fact_f1_list = []
+                        val_joint_metric_list = []
+
+                        for val_batch in self.episode_iter(validation_set[val_set_start:val_set_end],
+                                                           self.batch_size,
                                                            shuffle=False):
-                            (val_span_start_prob, val_span_end_prob, val_answer_type_prob, val_support_fact_prob,
-                             val_span_loss, val_answer_type_loss, val_support_fact_loss, val_loss
+                            (val_step_span_start_pos, val_step_span_end_pos, val_step_answer_type_prob,
+                             val_step_support_fact_prob,
+                             val_step_span_loss, val_step_answer_type_loss, val_step_support_fact_loss, val_step_loss
                              ) = self.session.run([
-                                self.span_start_prob, self.span_end_prob, self.answer_type_prob, self.support_fact_prob,
+                                self.span_start_pos, self.span_end_pos, self.answer_type_prob, self.support_fact_prob,
                                 self.span_loss, self.answer_type_loss, self.support_fact_loss, self.loss],
                                 feed_dict={
                                     self.input_sentence: val_batch['context_idxs'],
@@ -774,29 +850,150 @@ class ReadingComprehensionModel:
                                 }
                             )
 
-                            print(" validation ".center(25, "="))
-                            print("span_loss:{:.4f}\t answer_type_loss:{:.4f}\t "
-                                  "support_fact_loss:{:.4f}\t loss:{:.4f}".format(
-                                    val_span_loss, val_answer_type_loss, val_support_fact_loss, val_loss))
+                            (val_step_answer_type_accu,
+                             val_step_span_iou,
+                             val_step_answer_score,
+                             val_step_support_fact_accu,
+                             val_step_support_fact_recall,
+                             val_step_support_fact_precision,
+                             val_step_support_fact_f1,
+                             val_step_joint_metric
+                             ) = self.evaluate(
+                                {
+                                    'span_start_pos': val_step_span_start_pos,
+                                    'span_end_pos': val_step_span_end_pos,
+                                    'answer_type_prob': val_step_answer_type_prob,
+                                    'support_fact_prob': val_step_support_fact_prob
+                                },
+                                val_batch
+                            )
 
-                            best_saver.handle(val_span_loss, self.session, global_step)
+                            val_span_loss_list.append(val_step_span_loss)
+                            val_answer_type_loss_list.append(val_step_answer_type_loss)
+                            val_support_fact_loss_list.append(val_step_support_fact_loss)
+                            val_loss_list.append(val_step_loss)
+                            val_answer_type_accu_list.append(val_step_answer_type_accu)
+                            val_span_iou_list.append(val_step_span_iou)
+                            val_answer_score_list.append(val_step_answer_score)
+                            val_support_fact_accu_list.append(val_step_support_fact_accu)
+                            val_support_fact_recall_list.append(val_step_support_fact_recall)
+                            val_support_fact_precision_list.append(val_step_support_fact_precision)
+                            val_support_fact_f1_list.append(val_step_support_fact_f1)
+                            val_joint_metric_list.append(val_step_joint_metric)
 
-                            valid_summary = tf.Summary(value=[
-                                tf.Summary.Value(tag="validation_span_loss",
-                                                 simple_value=val_span_loss),
-                                tf.Summary.Value(tag="validation_answer_type_loss",
-                                                 simple_value=val_answer_type_loss),
-                                tf.Summary.Value(tag="validation_support_fact_loss",
-                                                 simple_value=val_support_fact_loss),
-                                tf.Summary.Value(tag="validation_loss",
-                                                 simple_value=val_loss)
-                            ])
-                            summary_writer.add_summary(valid_summary, global_step)
+                        val_span_loss_ary = np.array(val_span_loss_list)
+                        val_span_loss = np.mean(val_span_loss_ary[val_span_loss_ary > 0])
+                        val_answer_type_loss = np.mean(val_answer_type_loss_list)
+                        val_support_fact_loss = np.mean(val_support_fact_loss_list)
+                        val_loss = np.mean(val_loss_list)
+                        val_answer_type_accu = np.mean(val_answer_type_accu_list)
+                        val_span_iou = np.mean(val_span_iou_list)
+                        val_answer_score = np.mean(val_answer_score_list)
+                        val_support_fact_accu = np.mean(val_support_fact_accu_list)
+                        val_support_fact_recall_ary = np.array(val_support_fact_recall_list)
+                        val_support_fact_recall = np.mean(
+                            val_support_fact_recall_ary[np.logical_not(np.isnan(val_support_fact_recall_ary))])
+                        val_support_fact_precision_ary = np.array(val_support_fact_precision_list)
+                        val_support_fact_precision = np.mean(
+                            val_support_fact_precision_ary[np.logical_not(np.isnan(val_support_fact_precision_ary))])
+                        val_support_fact_f1_ary = np.array(val_support_fact_f1_list)
+                        val_support_fact_f1 = np.mean(
+                            val_support_fact_f1_ary[np.logical_not(np.isnan(val_support_fact_f1_ary))])
+                        val_joint_metric_ary = np.array(val_joint_metric_list)
+                        val_joint_metric = np.mean(
+                            val_joint_metric_ary[np.logical_not(np.isnan(val_joint_metric_ary))])
+
+                        print(" validation ".center(25, "="))
+                        print("span_loss:{:.4f}\t answer_type_loss:{:.4f}\t"
+                              "support_fact_loss:{:.4f}\t loss:{:.4f}\tanswer_score:{:.4f}\t"
+                              "support_fact_f1:{:.4f}\tjoint_metric:{:.4f}".format(
+                                val_span_loss, val_answer_type_loss, val_support_fact_loss, val_loss,
+                                val_answer_score, val_support_fact_f1, val_joint_metric))
+
+                        best_saver.handle(val_joint_metric, self.session, global_step)
+
+                        valid_summary = tf.Summary(value=[
+                            tf.Summary.Value(tag="validation_span_loss",
+                                             simple_value=val_span_loss),
+                            tf.Summary.Value(tag="validation_answer_type_loss",
+                                             simple_value=val_answer_type_loss),
+                            tf.Summary.Value(tag="validation_support_fact_loss",
+                                             simple_value=val_support_fact_loss),
+                            tf.Summary.Value(tag="validation_loss",
+                                             simple_value=val_loss),
+                            tf.Summary.Value(tag="validation_answer_type_accu",
+                                             simple_value=val_answer_type_accu),
+                            tf.Summary.Value(tag="validation_span_iou",
+                                             simple_value=val_span_iou),
+                            tf.Summary.Value(tag="validation_answer_score",
+                                             simple_value=val_answer_score),
+                            tf.Summary.Value(tag="validation_support_fact_accu",
+                                             simple_value=val_support_fact_accu),
+                            tf.Summary.Value(tag="validation_support_fact_recall",
+                                             simple_value=val_support_fact_recall),
+                            tf.Summary.Value(tag="validation_support_fact_precision",
+                                             simple_value=val_support_fact_precision),
+                            tf.Summary.Value(tag="validation_support_fact_f1",
+                                             simple_value=val_support_fact_f1),
+                            tf.Summary.Value(tag="validation_joint_metric",
+                                             simple_value=val_joint_metric)
+                        ])
+                        summary_writer.add_summary(valid_summary, global_step)
 
                     summary_writer.flush()
 
             coord.request_stop()
             coord.join(threads)
+
+    def evaluate(self, predict, gold):
+        batch_size = gold['context_idxs'].shape[0]
+
+        answer_type_predicts = np.argmax(predict['answer_type_prob'], axis=1)
+        answer_type_accu = np.sum(answer_type_predicts == gold['q_type']) / batch_size
+
+        avg_answer_score = 0.
+        span_iou = []
+        for idx in range(batch_size):
+            if answer_type_predicts[idx] != gold['q_type'][idx]:
+                answer_score = 0.
+            elif gold['q_type'][idx] == 0:
+                # for span type answer, calculate IoU as the score metric
+                intersection_start = max([predict['span_start_pos'][idx], gold['y1'][idx]])
+                intersection_end = min([predict['span_end_pos'][idx], gold['y2'][idx]])
+                union_start = min([predict['span_start_pos'][idx], gold['y1'][idx]])
+                union_end = max([predict['span_end_pos'][idx], gold['y2'][idx]])
+                answer_score = max(intersection_end - intersection_start, 0) / (union_end - union_start)
+                span_iou.append(answer_score)
+            else:
+                answer_score = 1.
+
+            avg_answer_score += answer_score
+
+        # the combined score of answer type and span IoU
+        avg_answer_score = avg_answer_score / batch_size
+
+        if len(span_iou) > 0:
+            avg_span_iou = np.sum(span_iou) / len(span_iou)
+        else:
+            avg_span_iou = -1
+
+        # 'unkown' type answer should have no supporting fact. use answer_type_predicts?
+        support_fact_predicts, _ = get_label_using_scores_by_threshold(
+            predict['support_fact_prob'],
+            threshold=self.support_fact_threshold,
+            topN=-1,
+            allow_empty=True
+        )
+
+        support_fact_labels = [list(np.nonzero(gold['is_support'][idx])[0]) for idx in range(batch_size)]
+
+        support_fact_accu, support_fact_recall, support_fact_precision, support_fact_f1 = cal_metric_batch(
+            support_fact_predicts, support_fact_labels)
+
+        joint_metric = avg_answer_score * support_fact_f1
+
+        return (answer_type_accu, avg_span_iou, avg_answer_score, support_fact_accu, support_fact_recall,
+                support_fact_precision, support_fact_f1, joint_metric)
 
     def load_model(self, model_path, selection='L'):
 

@@ -12,16 +12,16 @@ DataSet: {
   TrainPercentage: -1,
 
   # train set example file path
-  TrainSetExampleFile: '../data/train_example.pkl.gz',
+  TrainSetExampleFile: '../data/data_combine2019_1sentence/train_example.pkl.gz',
 
   # train set reature file path
-  TrainSetFeatureFile: '../data/train_feature.pkl.gz',
+  TrainSetFeatureFile: '../data/data_combine2019_1sentence/train_feature.pkl.gz',
 
   # dev set example file path
-  DevSetExampleFile: '../data/dev_example.pkl.gz',
+  DevSetExampleFile: '../data/data_combine2019_1sentence/dev_example.pkl.gz',
 
   # dev set reature file path
-  DevSetFeatureFile: '../data/dev_feature.pkl.gz',
+  DevSetFeatureFile: '../data/data_combine2019_1sentence/dev_feature.pkl.gz',
   }
 
 ################################################################################
@@ -45,12 +45,12 @@ word_embedding_trainable: true
 
 BERT: {
   # vocabulary file for the pretrained model
-  vocab_file: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\vocab.txt',
-  # vocab_file: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/vocab.txt',
+#  vocab_file: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\vocab.txt',
+   vocab_file: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/vocab.txt',
 
   # initial checkpoint of BERT model
-  init_checkpoint: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\bert_model.ckpt',
-  # init_checkpoint: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/bert_model.ckpt',
+#  init_checkpoint: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\bert_model.ckpt',
+   init_checkpoint: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/bert_model.ckpt',
 
   # bert model configurations
   bert_config: {
@@ -84,25 +84,21 @@ BERT: {
 ################################################################################
 # sentence embedding parameters
 
-# maximum input length for padding
-# It's only used as the default value to tokenization. The model can support dynamic input length, except
-# for the case when PoolSize for CNN's last layer is specified. If using bert, the upper limit is 512.
-max_input_len: 512
+# answer type embedding size
+answer_type_embed_size: 200
 
-# maximum number of sentences in one example
-max_num_sentence: 50
+# answer type embedding model selection
+# 'CNN': CNN model
+# 'BiLSTM': BiLSTM model, with attention mechanism
+# 'FirstPoolDense': Using the fist token and a dense layer, same as BERT pooling. Should only be used with BERT model.
+# 'MaxPoolDense': max pooling and full connect layer
+answer_type_embedding_type: 'FirstPoolDense'
 
 # sentence embedding size
 sentence_embed_size: 200
 
-# share sentence embedding for different score types
-sentence_embedding_shared_by_scores: false
-
 # sentence embedding model selection
-# 'CNN': CNN model
-# 'BiLSTM': BiLSTM model, with attention mechanism
-# 'PoolDense': Using the fist token and a dense layer, same as BERT pooling. Should only be used with BERT model.
-sentence_embedding_type: 'PoolDense'
+sentence_embedding_type: 'MaxPoolDense'
 
 # dropout rate
 dropout_rate: 0.2
@@ -196,10 +192,10 @@ grad_threshold: 5.0
 # training parameters
 
 # number of epoches
-num_epoch: 10
+num_epoch: 20
 
 # batch_size
-batch_size: 2
+batch_size: 200
 
 # period for model saving, in number of steps
 # default: 50
@@ -209,5 +205,22 @@ save_period: 51
 # default: 20
 validate_period: 20
 
+# number of samples for each validation step
+validate_size: 400
+
 ################################################################################
 # other parameters
+
+# maximum input length for padding
+# It's only used as the default value to tokenization. The model can support dynamic input length, except
+# for the case when PoolSize for CNN's last layer is specified. If using bert, the upper limit is 512.
+max_input_len: 512
+
+# maximum number of sentences in one example
+max_num_sentence: 50
+
+# maximum answer length, in tokens
+max_answer_len: 50
+
+# support fact threshold for prediction
+support_fact_threshold: 0.5

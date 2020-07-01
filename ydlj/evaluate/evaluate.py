@@ -137,7 +137,8 @@ if __name__ == '__main__':
     # prediction_file = r'../result/train_v1_pred_seed_62_epoch_10_99999.json'
     # prediction_file = r'../result/train_v2_pred_seed_5_epoch_9_2706.json'
     # prediction_file = r'../result/train_v2_pred_seed_5_epoch_8_99999.json'
-    prediction_file = r'../result/train_v3_pred_seed_74_epoch_10_99999.json'
+    # prediction_file = r'../result/train_v3_pred_seed_74_epoch_10_99999.json'
+    prediction_file = r'../result/train_v4_pred_seed_82_epoch_10_99999.json'
 
     gold_file = r'../data/dev.json'
 
