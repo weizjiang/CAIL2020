@@ -11,7 +11,7 @@ import pickle
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from reading_comprehension.reading_comprehension_net import ReadingComprehensionModel
-from baseline.data_process import InputFeatures, Example
+from reading_comprehension.data_process import InputFeatures, Example
 
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
@@ -64,4 +64,4 @@ if __name__ == '__main__':
                 epochs=config['num_epoch']
                 )
 
-    # RCModel.test(test_set=TestSet, test_batch_size=None, test_per_sample=False)
+    # RCModel.test(test_set=TestSet, test_batch_size=None)

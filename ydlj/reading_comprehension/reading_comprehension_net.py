@@ -79,7 +79,7 @@ class ReadingComprehensionModel:
             if os.path.isfile(self.bert.get('vocab_file', '')):
                 vocab_file = self.bert['vocab_file']
             else:
-                vocab_file = os.path.join(os.path.dirname(__file__), 'data', 'vocab.txt')
+                vocab_file = os.path.join(os.path.dirname(__file__), 'configs', 'vocab.txt')
 
             self.bert_tokenizer = tokenization.FullTokenizer(vocab_file=vocab_file, do_lower_case=True)
 
@@ -722,7 +722,7 @@ class ReadingComprehensionModel:
                 os.mkdir(checkpoint_dir)
             best_checkpoint_dir = os.path.join(out_dir, "bestcheckpoints")
             saver = tf.train.Saver(max_to_keep=1, save_relative_paths=True)
-            best_saver = cm.BestCheckpointSaver(save_dir=best_checkpoint_dir, num_to_keep=1, maximize=False)
+            best_saver = cm.BestCheckpointSaver(save_dir=best_checkpoint_dir, num_to_keep=1, maximize=True)
 
             # Train summaries
             summary_dir = os.path.join(out_dir, "summaries")
@@ -816,99 +816,10 @@ class ReadingComprehensionModel:
                         val_set_start = val_set_idx * self.validate_size
                         val_set_end = min((val_set_idx + 1) * self.validate_size, len(validation_set))
 
-                        val_span_loss_list = []
-                        val_answer_type_loss_list = []
-                        val_support_fact_loss_list = []
-                        val_loss_list = []
-                        val_answer_type_accu_list = []
-                        val_span_iou_list = []
-                        val_answer_score_list = []
-                        val_support_fact_accu_list = []
-                        val_support_fact_recall_list = []
-                        val_support_fact_precision_list = []
-                        val_support_fact_f1_list = []
-                        val_joint_metric_list = []
-
-                        for val_batch in self.episode_iter(validation_set[val_set_start:val_set_end],
-                                                           self.batch_size,
-                                                           shuffle=False):
-                            (val_step_span_start_pos, val_step_span_end_pos, val_step_answer_type_prob,
-                             val_step_support_fact_prob,
-                             val_step_span_loss, val_step_answer_type_loss, val_step_support_fact_loss, val_step_loss
-                             ) = self.session.run([
-                                self.span_start_pos, self.span_end_pos, self.answer_type_prob, self.support_fact_prob,
-                                self.span_loss, self.answer_type_loss, self.support_fact_loss, self.loss],
-                                feed_dict={
-                                    self.input_sentence: val_batch['context_idxs'],
-                                    self.input_mask: val_batch['context_mask'],
-                                    self.input_answer_type: val_batch['q_type'],
-                                    self.input_span_start: val_batch['y1'],
-                                    self.input_span_end: val_batch['y2'],
-                                    self.input_sentence_mapping: val_batch['all_mapping'],
-                                    self.input_support_facts: val_batch['is_support'],
-                                    self.is_training: False
-                                }
-                            )
-
-                            (val_step_answer_type_accu,
-                             val_step_span_iou,
-                             val_step_answer_score,
-                             val_step_support_fact_accu,
-                             val_step_support_fact_recall,
-                             val_step_support_fact_precision,
-                             val_step_support_fact_f1,
-                             val_step_joint_metric
-                             ) = self.evaluate(
-                                {
-                                    'span_start_pos': val_step_span_start_pos,
-                                    'span_end_pos': val_step_span_end_pos,
-                                    'answer_type_prob': val_step_answer_type_prob,
-                                    'support_fact_prob': val_step_support_fact_prob
-                                },
-                                val_batch
-                            )
-
-                            val_span_loss_list.append(val_step_span_loss)
-                            val_answer_type_loss_list.append(val_step_answer_type_loss)
-                            val_support_fact_loss_list.append(val_step_support_fact_loss)
-                            val_loss_list.append(val_step_loss)
-                            val_answer_type_accu_list.append(val_step_answer_type_accu)
-                            val_span_iou_list.append(val_step_span_iou)
-                            val_answer_score_list.append(val_step_answer_score)
-                            val_support_fact_accu_list.append(val_step_support_fact_accu)
-                            val_support_fact_recall_list.append(val_step_support_fact_recall)
-                            val_support_fact_precision_list.append(val_step_support_fact_precision)
-                            val_support_fact_f1_list.append(val_step_support_fact_f1)
-                            val_joint_metric_list.append(val_step_joint_metric)
-
-                        val_span_loss_ary = np.array(val_span_loss_list)
-                        val_span_loss = np.mean(val_span_loss_ary[val_span_loss_ary > 0])
-                        val_answer_type_loss = np.mean(val_answer_type_loss_list)
-                        val_support_fact_loss = np.mean(val_support_fact_loss_list)
-                        val_loss = np.mean(val_loss_list)
-                        val_answer_type_accu = np.mean(val_answer_type_accu_list)
-                        val_span_iou = np.mean(val_span_iou_list)
-                        val_answer_score = np.mean(val_answer_score_list)
-                        val_support_fact_accu = np.mean(val_support_fact_accu_list)
-                        val_support_fact_recall_ary = np.array(val_support_fact_recall_list)
-                        val_support_fact_recall = np.mean(
-                            val_support_fact_recall_ary[np.logical_not(np.isnan(val_support_fact_recall_ary))])
-                        val_support_fact_precision_ary = np.array(val_support_fact_precision_list)
-                        val_support_fact_precision = np.mean(
-                            val_support_fact_precision_ary[np.logical_not(np.isnan(val_support_fact_precision_ary))])
-                        val_support_fact_f1_ary = np.array(val_support_fact_f1_list)
-                        val_support_fact_f1 = np.mean(
-                            val_support_fact_f1_ary[np.logical_not(np.isnan(val_support_fact_f1_ary))])
-                        val_joint_metric_ary = np.array(val_joint_metric_list)
-                        val_joint_metric = np.mean(
-                            val_joint_metric_ary[np.logical_not(np.isnan(val_joint_metric_ary))])
-
-                        print(" validation ".center(25, "="))
-                        print("span_loss:{:.4f}\t answer_type_loss:{:.4f}\t"
-                              "support_fact_loss:{:.4f}\t loss:{:.4f}\tanswer_score:{:.4f}\t"
-                              "support_fact_f1:{:.4f}\tjoint_metric:{:.4f}".format(
-                                val_span_loss, val_answer_type_loss, val_support_fact_loss, val_loss,
-                                val_answer_score, val_support_fact_f1, val_joint_metric))
+                        (val_span_loss, val_answer_type_loss, val_support_fact_loss, val_loss, val_answer_type_accu,
+                         val_span_iou, val_answer_score, val_support_fact_accu, val_support_fact_recall,
+                         val_support_fact_precision, val_support_fact_f1, val_joint_metric
+                         ) = self.test(validation_set[val_set_start:val_set_end])
 
                         best_saver.handle(val_joint_metric, self.session, global_step)
 
@@ -945,10 +856,25 @@ class ReadingComprehensionModel:
             coord.request_stop()
             coord.join(threads)
 
+    def predict_answer_type_and_support_fact(self, answer_type_prob, support_fact_prob):
+        answer_type_predicts = np.argmax(answer_type_prob, axis=1)
+
+        # 'unkown' type answer should have no supporting fact. use answer_type_predicts?
+        support_fact_predicts, _ = get_label_using_scores_by_threshold(
+            support_fact_prob,
+            threshold=self.support_fact_threshold,
+            topN=-1,
+            allow_empty=True
+        )
+
+        return answer_type_predicts, support_fact_predicts
+
     def evaluate(self, predict, gold):
         batch_size = gold['context_idxs'].shape[0]
 
-        answer_type_predicts = np.argmax(predict['answer_type_prob'], axis=1)
+        answer_type_predicts, support_fact_predicts = self.predict_answer_type_and_support_fact(
+            predict['answer_type_prob'], predict['support_fact_prob'])
+
         answer_type_accu = np.sum(answer_type_predicts == gold['q_type']) / batch_size
 
         avg_answer_score = 0.
@@ -976,14 +902,6 @@ class ReadingComprehensionModel:
             avg_span_iou = np.sum(span_iou) / len(span_iou)
         else:
             avg_span_iou = -1
-
-        # 'unkown' type answer should have no supporting fact. use answer_type_predicts?
-        support_fact_predicts, _ = get_label_using_scores_by_threshold(
-            predict['support_fact_prob'],
-            threshold=self.support_fact_threshold,
-            topN=-1,
-            allow_empty=True
-        )
 
         support_fact_labels = [list(np.nonzero(gold['is_support'][idx])[0]) for idx in range(batch_size)]
 
@@ -1017,13 +935,23 @@ class ReadingComprehensionModel:
             tf.train.import_meta_graph("{0}.meta".format(checkpoint_file)).restore(self.session, checkpoint_file)
 
             self.input_sentence = graph.get_tensor_by_name("input_sentence:0")
-            self.input_actual_length = graph.get_tensor_by_name("input_actual_length:0")
-            self.input_scores = graph.get_tensor_by_name("input_scores:0")
+            self.input_mask = graph.get_tensor_by_name("input_mask:0")
+            self.input_answer_type = graph.get_tensor_by_name("input_answer_type:0")
+            self.input_span_start = graph.get_tensor_by_name("input_span_start:0")
+            self.input_span_end = graph.get_tensor_by_name("input_span_end:0")
+            self.input_sentence_mapping = graph.get_tensor_by_name("input_sentence_mapping:0")
+            self.input_support_facts = graph.get_tensor_by_name("input_support_facts:0")
             self.is_training = graph.get_tensor_by_name("is_training:0")
 
-            self.output_scores = graph.get_tensor_by_name("output_scores:0")
-            self.score_mse = graph.get_tensor_by_name("score_mse:0")
-            self.score_loss = graph.get_tensor_by_name("score_loss:0")
+            self.span_start_pos = graph.get_tensor_by_name("span_start_pos:0")
+            self.span_end_pos = graph.get_tensor_by_name("span_end_pos:0")
+            self.span_start_prob = graph.get_tensor_by_name("span_start_prob:0")
+            self.span_end_prob = graph.get_tensor_by_name("span_end_prob:0")
+            self.answer_type_prob = graph.get_tensor_by_name("answer_type_prob:0")
+            self.support_fact_prob = graph.get_tensor_by_name("support_fact_prob:0")
+            self.span_loss = graph.get_tensor_by_name("span_loss:0")
+            self.answer_type_loss = graph.get_tensor_by_name("answer_type_loss:0")
+            self.support_fact_loss = graph.get_tensor_by_name("support_fact_loss:0")
             self.reg_loss = graph.get_tensor_by_name("reg_loss:0")
             self.loss = graph.get_tensor_by_name("loss:0")
             self.train_op = graph.get_operation_by_name("train_op")
@@ -1034,41 +962,102 @@ class ReadingComprehensionModel:
 
         self.LoadedModel = checkpoint_file
 
-    def test(self, test_set, test_batch_size=None, test_per_sample=False, max_input_len=None):
-        test_data = self.episode_iter(test_set, test_batch_size, shuffle=False, max_input_len=max_input_len)
-        score_mse_all = np.zeros(len(self.score_types))
-        score_loss_all = 0.
-        loss_all = 0.
-        cnt = 0
-        for (test_x, test_y, test_actual_len, test_samples) in test_data:
-            val_output_scores, val_score_mse, val_score_loss, val_loss = self.session.run(
-                [self.output_scores, self.score_mse, self.score_loss, self.loss],
+    def test(self, test_set, test_batch_size=None, max_input_len=None):
+        val_span_loss_list = []
+        val_answer_type_loss_list = []
+        val_support_fact_loss_list = []
+        val_loss_list = []
+        val_answer_type_accu_list = []
+        val_span_iou_list = []
+        val_answer_score_list = []
+        val_support_fact_accu_list = []
+        val_support_fact_recall_list = []
+        val_support_fact_precision_list = []
+        val_support_fact_f1_list = []
+        val_joint_metric_list = []
+
+        for val_batch in self.episode_iter(test_set, test_batch_size, shuffle=False, max_input_len=max_input_len):
+            (val_step_span_start_pos, val_step_span_end_pos, val_step_answer_type_prob,
+             val_step_support_fact_prob,
+             val_step_span_loss, val_step_answer_type_loss, val_step_support_fact_loss, val_step_loss
+             ) = self.session.run([
+                self.span_start_pos, self.span_end_pos, self.answer_type_prob, self.support_fact_prob,
+                self.span_loss, self.answer_type_loss, self.support_fact_loss, self.loss],
                 feed_dict={
-                    self.input_sentence: test_x,
-                    self.input_actual_length: test_actual_len,
-                    self.input_scores: test_y,
+                    self.input_sentence: val_batch['context_idxs'],
+                    self.input_mask: val_batch['context_mask'],
+                    self.input_answer_type: val_batch['q_type'],
+                    self.input_span_start: val_batch['y1'],
+                    self.input_span_end: val_batch['y2'],
+                    self.input_sentence_mapping: val_batch['all_mapping'],
+                    self.input_support_facts: val_batch['is_support'],
                     self.is_training: False
                 }
             )
 
-            if test_per_sample:
-                for idx in range(len(test_samples)):
-                    print('-----------')
-                    print('raw: {}'.format(test_set[cnt + idx]))
-                    print('input: {}'.format(test_samples[idx]))
-                    # print("score types: {}".format(self.score_types))
-                    print('input scores: {}'.format(test_y[idx]))
-                    print('output scores: {}'.format(val_output_scores[idx]))
+            (val_step_answer_type_accu,
+             val_step_span_iou,
+             val_step_answer_score,
+             val_step_support_fact_accu,
+             val_step_support_fact_recall,
+             val_step_support_fact_precision,
+             val_step_support_fact_f1,
+             val_step_joint_metric
+             ) = self.evaluate(
+                {
+                    'span_start_pos': val_step_span_start_pos,
+                    'span_end_pos': val_step_span_end_pos,
+                    'answer_type_prob': val_step_answer_type_prob,
+                    'support_fact_prob': val_step_support_fact_prob
+                },
+                val_batch
+            )
 
-            score_mse_all += val_score_mse
-            score_loss_all += val_score_loss
-            loss_all += val_loss
-            cnt += 1
+            val_span_loss_list.append(val_step_span_loss)
+            val_answer_type_loss_list.append(val_step_answer_type_loss)
+            val_support_fact_loss_list.append(val_step_support_fact_loss)
+            val_loss_list.append(val_step_loss)
+            val_answer_type_accu_list.append(val_step_answer_type_accu)
+            val_span_iou_list.append(val_step_span_iou)
+            val_answer_score_list.append(val_step_answer_score)
+            val_support_fact_accu_list.append(val_step_support_fact_accu)
+            val_support_fact_recall_list.append(val_step_support_fact_recall)
+            val_support_fact_precision_list.append(val_step_support_fact_precision)
+            val_support_fact_f1_list.append(val_step_support_fact_f1)
+            val_joint_metric_list.append(val_step_joint_metric)
 
-        print("==============")
-        print("score types: {}".format(self.score_types))
-        print("score mse: {}, \nscore loss: {:.4f}, \ntotal loss: {:.4f}".format(
-            score_mse_all / cnt, score_loss_all / cnt, loss_all / cnt))
+        val_span_loss_ary = np.array(val_span_loss_list)
+        val_span_loss = np.mean(val_span_loss_ary[val_span_loss_ary > 0])
+        val_answer_type_loss = np.mean(val_answer_type_loss_list)
+        val_support_fact_loss = np.mean(val_support_fact_loss_list)
+        val_loss = np.mean(val_loss_list)
+        val_answer_type_accu = np.mean(val_answer_type_accu_list)
+        val_span_iou = np.mean(val_span_iou_list)
+        val_answer_score = np.mean(val_answer_score_list)
+        val_support_fact_accu = np.mean(val_support_fact_accu_list)
+        val_support_fact_recall_ary = np.array(val_support_fact_recall_list)
+        val_support_fact_recall = np.mean(
+            val_support_fact_recall_ary[np.logical_not(np.isnan(val_support_fact_recall_ary))])
+        val_support_fact_precision_ary = np.array(val_support_fact_precision_list)
+        val_support_fact_precision = np.mean(
+            val_support_fact_precision_ary[np.logical_not(np.isnan(val_support_fact_precision_ary))])
+        val_support_fact_f1_ary = np.array(val_support_fact_f1_list)
+        val_support_fact_f1 = np.mean(
+            val_support_fact_f1_ary[np.logical_not(np.isnan(val_support_fact_f1_ary))])
+        val_joint_metric_ary = np.array(val_joint_metric_list)
+        val_joint_metric = np.mean(
+            val_joint_metric_ary[np.logical_not(np.isnan(val_joint_metric_ary))])
+
+        print(" validation ".center(25, "="))
+        print("span_loss:{:.4f}\t answer_type_loss:{:.4f}\t"
+              "support_fact_loss:{:.4f}\t loss:{:.4f}\tanswer_score:{:.4f}\t"
+              "support_fact_f1:{:.4f}\tjoint_metric:{:.4f}".format(
+                val_span_loss, val_answer_type_loss, val_support_fact_loss, val_loss,
+                val_answer_score, val_support_fact_f1, val_joint_metric))
+
+        return (val_span_loss, val_answer_type_loss, val_support_fact_loss, val_loss, val_answer_type_accu,
+                val_span_iou, val_answer_score, val_support_fact_accu, val_support_fact_recall,
+                val_support_fact_precision, val_support_fact_f1, val_joint_metric)
 
     def predict(self, query_set, batch_size=None, max_input_len=None, test_per_sample=True):
         num_sentence = len(query_set)
