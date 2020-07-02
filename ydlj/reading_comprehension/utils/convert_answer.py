@@ -1,10 +1,9 @@
 
 import collections
-from transformers import  BasicTokenizer, BertTokenizer
 import logging
 
 
-def get_final_text(pred_text, orig_text, do_lower_case, verbose_logging=False):
+def get_final_text(pred_text, orig_text, tokenizer, verbose_logging=False):
     """Project the tokenized prediction back to the original text."""
 
     # When we created the data, we kept track of the alignment between original
@@ -44,12 +43,8 @@ def get_final_text(pred_text, orig_text, do_lower_case, verbose_logging=False):
         
         return (ns_text, ns_to_s_map)
 
-    
-    tokenizer = BasicTokenizer(do_lower_case=do_lower_case)
-
     tok_text = " ".join(tokenizer.tokenize(orig_text))
 
-   
     start_position = tok_text.find(pred_text)
     if start_position == -1:   
         if verbose_logging:
@@ -97,7 +92,7 @@ def get_final_text(pred_text, orig_text, do_lower_case, verbose_logging=False):
     return output_text
 
 
-def convert_to_tokens(example, features, ids, y1, y2, q_type):
+def convert_to_tokens(example, features, ids, y1, y2, q_type, tokenizer):
     answer_dict = dict()
     
     for i, qid in enumerate(ids):   # article id
@@ -121,8 +116,7 @@ def convert_to_tokens(example, features, ids, y1, y2, q_type):
                 tok_text = " ".join(tok_text.split())  
                 orig_text = " ".join(orig_tokens).strip('[,.;]')    
 
-                
-                final_text = get_final_text(tok_text, orig_text, do_lower_case=False, verbose_logging=False)
+                final_text = get_final_text(tok_text, orig_text, tokenizer, verbose_logging=False)
                 answer_text = final_text
         elif q_type[i] == 1:
             answer_text = 'yes'

@@ -189,9 +189,29 @@ def separate_sentence(text, separators=None, non_starting_chars=None):
     return sentences, sentence_spans
 
 
+def analyze_data():
+    # data_file = r'data/train.json'
+    # data_file = r'data/dev.json'
+    # data_file = r'data/train_2019_1sentence_converted.json'
+    data_file = r'data/data_combine2019_1sentence/train.json'
+
+    with open(data_file, 'r', encoding='utf-8') as f_in:
+        data = json.load(f_in)
+
+    answer_types = ['span', 'yes', 'no', 'unknown']
+    answers = [item['answer'] if item['answer'] in answer_types else 'span' for item in data]
+    print('-- ', data_file)
+    print('total samples: {}'.format(len(answers)))
+    for answer_type in answer_types:
+        type_count = answers.count(answer_type)
+        print('{}: {:.1f}% ({})'.format(answer_type, 100 * type_count/len(answers), type_count))
+
+
 if __name__ == '__main__':
     # separate_dev_set()
 
     # generate_dev_result()
 
-    convert_cail2019_data()
+    # convert_cail2019_data()
+
+    analyze_data()

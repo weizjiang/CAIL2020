@@ -12,10 +12,12 @@ from gensim.models import KeyedVectors
 import yaml
 from tflearn.data_utils import pad_sequences
 import re
+import json
 
 from reading_comprehension.utils import checkmate as cm
-from reading_comprehension.utils.pipelines import truncate_by_separator, token_to_index as tokenize
+from reading_comprehension.utils.pipelines import token_to_index as tokenize
 from reading_comprehension.utils.data_helpers import get_label_using_scores_by_threshold, cal_metric_batch
+from reading_comprehension.utils.convert_answer import convert_to_tokens
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../libs'))
 from bert import modeling as bert_modeling
@@ -610,17 +612,17 @@ class ReadingComprehensionModel:
         """Generate batch vec_data. """
         if shuffle:
             random.shuffle(data_set)
-        num_sentence = len(data_set)
+        num_sample = len(data_set)
         if episode_size is None:
             episode_size = self.batch_size
         elif episode_size == -1:
-            episode_size = num_sentence
-        num_episode = int((num_sentence - 1) / episode_size) + 1
+            episode_size = num_sample
+        num_episode = int((num_sample - 1) / episode_size) + 1
 
         IGNORE_INDEX = -100
         for i in range(num_episode):
             start_id = i * episode_size
-            end_id = min((i + 1) * episode_size, num_sentence)
+            end_id = min((i + 1) * episode_size, num_sample)
             cur_bsz = end_id - start_id
             cur_batch = data_set[start_id:end_id]
             cur_batch.sort(key=lambda x: sum(x.doc_input_mask), reverse=True)
@@ -856,24 +858,29 @@ class ReadingComprehensionModel:
             coord.request_stop()
             coord.join(threads)
 
-    def predict_answer_type_and_support_fact(self, answer_type_prob, support_fact_prob):
+    def predict_answer_type_and_support_fact(self, answer_type_prob, support_fact_prob, support_fact_threshold=None):
         answer_type_predicts = np.argmax(answer_type_prob, axis=1)
 
         # 'unkown' type answer should have no supporting fact. use answer_type_predicts?
+        if support_fact_threshold is None:
+            support_fact_threshold = self.support_fact_threshold
         support_fact_predicts, _ = get_label_using_scores_by_threshold(
             support_fact_prob,
-            threshold=self.support_fact_threshold,
+            threshold=support_fact_threshold,
             topN=-1,
             allow_empty=True
         )
 
+        for support_facts in support_fact_predicts:
+            support_facts.sort()
+
         return answer_type_predicts, support_fact_predicts
 
-    def evaluate(self, predict, gold):
+    def evaluate(self, predict, gold, support_fact_threshold=None):
         batch_size = gold['context_idxs'].shape[0]
 
         answer_type_predicts, support_fact_predicts = self.predict_answer_type_and_support_fact(
-            predict['answer_type_prob'], predict['support_fact_prob'])
+            predict['answer_type_prob'], predict['support_fact_prob'], support_fact_threshold)
 
         answer_type_accu = np.sum(answer_type_predicts == gold['q_type']) / batch_size
 
@@ -962,7 +969,7 @@ class ReadingComprehensionModel:
 
         self.LoadedModel = checkpoint_file
 
-    def test(self, test_set, test_batch_size=None, max_input_len=None):
+    def test(self, test_set, test_batch_size=None, max_input_len=None, support_fact_threshold=None):
         val_span_loss_list = []
         val_answer_type_loss_list = []
         val_support_fact_loss_list = []
@@ -1010,7 +1017,8 @@ class ReadingComprehensionModel:
                     'answer_type_prob': val_step_answer_type_prob,
                     'support_fact_prob': val_step_support_fact_prob
                 },
-                val_batch
+                val_batch,
+                support_fact_threshold
             )
 
             val_span_loss_list.append(val_step_span_loss)
@@ -1059,43 +1067,71 @@ class ReadingComprehensionModel:
                 val_span_iou, val_answer_score, val_support_fact_accu, val_support_fact_recall,
                 val_support_fact_precision, val_support_fact_f1, val_joint_metric)
 
-    def predict(self, query_set, batch_size=None, max_input_len=None, test_per_sample=True):
-        num_sentence = len(query_set)
+    def predict(self, examples, features, batch_size=None, max_input_len=None, test_per_sample=True,
+                support_fact_threshold=None, result_file=None):
+        num_sample = len(examples)
         if batch_size is None:
             batch_size = self.batch_size
         elif batch_size == -1:
-            batch_size = num_sentence
-        num_batch = int((num_sentence - 1) / batch_size) + 1
+            batch_size = num_sample
 
-        output_scores = None
-        for i in range(num_batch):
-            start_id = i * batch_size
-            end_id = min((i + 1) * batch_size, num_sentence)
-            sample_tokens, sample_token_lengths = self.tokenize(query_set[start_id:end_id],
-                                                                max_input_len=max_input_len)
+        if result_file is None:
+            m = re.search(r'[\\/](rc_[\d-]*)[\\/]', self.LoadedModel)
+            if m:
+                model_name = m.group(1)
+                result_file = 'results/result_{}.json'.format(model_name)
+            else:
+                result_file = 'results/result.json'
 
-            val_output_scores = self.session.run(
-                self.output_scores,
+        example_dict = {e.qas_id: e for e in examples}
+        feature_dict = {f.qas_id: f for f in features}
+
+        answer_dict = {}
+        support_fact_dict = {}
+
+        for val_batch in self.episode_iter(features, batch_size, shuffle=False, max_input_len=max_input_len):
+            (span_start_pos, span_end_pos, answer_type_prob, support_fact_prob
+             ) = self.session.run([
+                self.span_start_pos, self.span_end_pos, self.answer_type_prob, self.support_fact_prob],
                 feed_dict={
-                    self.input_sentence: sample_tokens,
-                    self.input_actual_length: sample_token_lengths,
+                    self.input_sentence: val_batch['context_idxs'],
+                    self.input_mask: val_batch['context_mask'],
+                    self.input_sentence_mapping: val_batch['all_mapping'],
                     self.is_training: False
                 }
             )
 
-            if test_per_sample:
-                for idx in range(start_id, end_id):
-                    print('-----------')
-                    print('input: {}'.format(query_set[idx]))
-                    print("score types: {}".format(self.score_types))
-                    print('output scores: {}'.format(val_output_scores[idx]))
+            answer_type_predicts, support_fact_predicts = self.predict_answer_type_and_support_fact(
+                answer_type_prob, support_fact_prob, support_fact_threshold)
 
-            if output_scores is None:
-                output_scores = val_output_scores
-            else:
-                output_scores = np.vstack([output_scores, val_output_scores])
+            ids = val_batch['ids']
+            answer_dict_batch = convert_to_tokens(example_dict, feature_dict, ids,
+                                                  list(span_start_pos),
+                                                  list(span_end_pos),
+                                                  list(answer_type_predicts),
+                                                  self.bert_tokenizer)
+            answer_dict.update(answer_dict_batch)
 
-        return output_scores
+            for sample_idx, support_facts in enumerate(support_fact_predicts):
+                cur_id = ids[sample_idx]
+                support_fact_sentences = [
+                    example_dict[cur_id].sent_names[sentence_idx] for sentence_idx in support_facts]
+                support_fact_dict.update({cur_id: support_fact_sentences})
+
+            # if test_per_sample:
+            #     for idx in range(start_id, end_id):
+            #         print('-----------')
+            #         print('input: {}'.format(query_set[idx]))
+            #         print("score types: {}".format(self.score_types))
+            #         print('output scores: {}'.format(val_output_scores[idx]))
+
+        new_answer_dict = {}
+        for key, value in answer_dict.items():
+            new_answer_dict[key] = value.replace(" ", "")
+        prediction = {'answer': new_answer_dict, 'sp': support_fact_dict}
+        os.makedirs(os.path.dirname(result_file), exist_ok=True)
+        with open(result_file, 'w', encoding='utf8') as f:
+            json.dump(prediction, f, indent=4, ensure_ascii=False)
 
     def tokenize(self, samples, max_input_len=None):
         if max_input_len is None:

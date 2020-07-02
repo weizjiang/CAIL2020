@@ -11,18 +11,21 @@ from reading_comprehension.data_process import InputFeatures, Example
 
 
 if __name__ == '__main__':
-
     RCModel = ReadingComprehensionModel(config='configs/reading_comprehension_config.yml')
 
     RCModel.load_model(r'runs/rc_20200701-211818', 'L')
 
+    test_set_example_file = '../data/dev_example.pkl.gz'
     test_set_feature_file = '../data/dev_feature.pkl.gz'
+    with gzip.open(test_set_example_file, 'rb') as f:
+        test_set_examples = pickle.load(f)
     with gzip.open(test_set_feature_file, 'rb') as f:
         test_set_features = pickle.load(f)
 
-    (val_span_loss, val_answer_type_loss, val_support_fact_loss, val_loss, val_answer_type_accu,
-     val_span_iou, val_answer_score, val_support_fact_accu, val_support_fact_recall,
-     val_support_fact_precision, val_support_fact_f1, val_joint_metric
-     ) = RCModel.test(test_set=test_set_features, test_batch_size=2)
+    # start = timer()
 
-    print('Test Done.')
+    RCModel.predict(examples=test_set_examples, features=test_set_features, batch_size=10)
+
+    # end = timer()
+    # print('- Done in %.3f seconds -' % (end - start))
+
