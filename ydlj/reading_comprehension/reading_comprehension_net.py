@@ -1110,6 +1110,9 @@ class ReadingComprehensionModel:
                                                   list(span_end_pos),
                                                   list(answer_type_predicts),
                                                   self.bert_tokenizer)
+
+            answer_dict_batch = {key: value.replace(" ", "") for key, value in answer_dict_batch.items()}
+
             answer_dict.update(answer_dict_batch)
 
             for sample_idx, support_facts in enumerate(support_fact_predicts):
@@ -1118,17 +1121,13 @@ class ReadingComprehensionModel:
                     example_dict[cur_id].sent_names[sentence_idx] for sentence_idx in support_facts]
                 support_fact_dict.update({cur_id: support_fact_sentences})
 
-            # if test_per_sample:
-            #     for idx in range(start_id, end_id):
-            #         print('-----------')
-            #         print('input: {}'.format(query_set[idx]))
-            #         print("score types: {}".format(self.score_types))
-            #         print('output scores: {}'.format(val_output_scores[idx]))
+            if test_per_sample:
+                for sample_idx, cur_id in enumerate(ids):
+                    print('----------- {}'.format(cur_id))
+                    print('predict answer: {}'.format(answer_dict[cur_id]))
+                    print("gold answer: {}".format(example_dict[cur_id].orig_answer_text))
 
-        new_answer_dict = {}
-        for key, value in answer_dict.items():
-            new_answer_dict[key] = value.replace(" ", "")
-        prediction = {'answer': new_answer_dict, 'sp': support_fact_dict}
+        prediction = {'answer': answer_dict, 'sp': support_fact_dict}
         os.makedirs(os.path.dirname(result_file), exist_ok=True)
         with open(result_file, 'w', encoding='utf8') as f:
             json.dump(prediction, f, indent=4, ensure_ascii=False)
