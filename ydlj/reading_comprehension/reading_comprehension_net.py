@@ -760,7 +760,9 @@ class ReadingComprehensionModel:
                      support_fact_recall,
                      support_fact_precision,
                      support_fact_f1,
-                     joint_metric
+                     joint_metric,
+                     num_span,
+                     num_support_fact
                      ) = self.evaluate(
                         {
                             'span_start_pos': span_start_pos,
@@ -861,15 +863,19 @@ class ReadingComprehensionModel:
     def predict_answer_type_and_support_fact(self, answer_type_prob, support_fact_prob, support_fact_threshold=None):
         answer_type_predicts = np.argmax(answer_type_prob, axis=1)
 
-        # 'unkown' type answer should have no supporting fact. use answer_type_predicts?
         if support_fact_threshold is None:
             support_fact_threshold = self.support_fact_threshold
         support_fact_predicts, _ = get_label_using_scores_by_threshold(
             support_fact_prob,
             threshold=support_fact_threshold,
             topN=-1,
-            allow_empty=True
+            allow_empty=False
         )
+
+        # 'unkown' type answer should have no supporting fact
+        for cnt, answer_type_predict in enumerate(answer_type_predicts):
+            if answer_type_predict == 3:
+                support_fact_predicts[cnt] = []
 
         for support_facts in support_fact_predicts:
             support_facts.sort()
@@ -886,6 +892,7 @@ class ReadingComprehensionModel:
 
         avg_answer_score = 0.
         span_iou = []
+        num_support_fact = 0
         for idx in range(batch_size):
             if answer_type_predicts[idx] != gold['q_type'][idx]:
                 answer_score = 0.
@@ -898,6 +905,9 @@ class ReadingComprehensionModel:
                 answer_score = max(intersection_end - intersection_start, 0) / (union_end - union_start)
                 span_iou.append(answer_score)
             else:
+                if gold['q_type'][idx] != 3:
+                    # number of non-unknown answers, which need support facts
+                    num_support_fact += 1
                 answer_score = 1.
 
             avg_answer_score += answer_score
@@ -905,8 +915,9 @@ class ReadingComprehensionModel:
         # the combined score of answer type and span IoU
         avg_answer_score = avg_answer_score / batch_size
 
-        if len(span_iou) > 0:
-            avg_span_iou = np.sum(span_iou) / len(span_iou)
+        num_span = len(span_iou)
+        if num_span > 0:
+            avg_span_iou = np.mean(span_iou)
         else:
             avg_span_iou = -1
 
@@ -918,7 +929,7 @@ class ReadingComprehensionModel:
         joint_metric = avg_answer_score * support_fact_f1
 
         return (answer_type_accu, avg_span_iou, avg_answer_score, support_fact_accu, support_fact_recall,
-                support_fact_precision, support_fact_f1, joint_metric)
+                support_fact_precision, support_fact_f1, joint_metric, num_span, num_support_fact)
 
     def load_model(self, model_path, selection='L'):
 
@@ -982,6 +993,8 @@ class ReadingComprehensionModel:
         val_support_fact_precision_list = []
         val_support_fact_f1_list = []
         val_joint_metric_list = []
+        val_num_span_list = []
+        val_num_support_fact_list = []
 
         for val_batch in self.episode_iter(test_set, test_batch_size, shuffle=False, max_input_len=max_input_len):
             (val_step_span_start_pos, val_step_span_end_pos, val_step_answer_type_prob,
@@ -1009,7 +1022,9 @@ class ReadingComprehensionModel:
              val_step_support_fact_recall,
              val_step_support_fact_precision,
              val_step_support_fact_f1,
-             val_step_joint_metric
+             val_step_joint_metric,
+             val_step_num_span,
+             val_step_num_support_fact
              ) = self.evaluate(
                 {
                     'span_start_pos': val_step_span_start_pos,
@@ -1033,6 +1048,8 @@ class ReadingComprehensionModel:
             val_support_fact_precision_list.append(val_step_support_fact_precision)
             val_support_fact_f1_list.append(val_step_support_fact_f1)
             val_joint_metric_list.append(val_step_joint_metric)
+            val_num_span_list.append(val_step_num_span)
+            val_num_support_fact_list.append(val_step_num_support_fact)
 
         val_span_loss_ary = np.array(val_span_loss_list)
         val_span_loss = np.mean(val_span_loss_ary[val_span_loss_ary > 0])
@@ -1040,21 +1057,30 @@ class ReadingComprehensionModel:
         val_support_fact_loss = np.mean(val_support_fact_loss_list)
         val_loss = np.mean(val_loss_list)
         val_answer_type_accu = np.mean(val_answer_type_accu_list)
-        val_span_iou = np.mean(val_span_iou_list)
+        val_span_iou_ary = np.array(val_span_iou_list)
+        val_num_span_ary = np.array(val_num_span_list)
+        span_idx = val_num_span_ary > 0
+        val_span_iou = (np.sum(val_span_iou_ary[span_idx] * val_num_span_ary[span_idx]) / np.sum(val_num_span_ary))
         val_answer_score = np.mean(val_answer_score_list)
         val_support_fact_accu = np.mean(val_support_fact_accu_list)
+        val_num_support_fact_ary = np.array(val_num_support_fact_list)
+        support_fact_idx = np.array(val_num_support_fact_ary) > 0
         val_support_fact_recall_ary = np.array(val_support_fact_recall_list)
-        val_support_fact_recall = np.mean(
-            val_support_fact_recall_ary[np.logical_not(np.isnan(val_support_fact_recall_ary))])
+        val_support_fact_recall = np.sum(
+            val_support_fact_recall_ary[support_fact_idx] * val_num_support_fact_ary[support_fact_idx]
+        ) / np.sum(val_num_support_fact_ary)
         val_support_fact_precision_ary = np.array(val_support_fact_precision_list)
-        val_support_fact_precision = np.mean(
-            val_support_fact_precision_ary[np.logical_not(np.isnan(val_support_fact_precision_ary))])
+        val_support_fact_precision = np.sum(
+            val_support_fact_precision_ary[support_fact_idx] * val_num_support_fact_ary[support_fact_idx]
+        ) / np.sum(val_num_support_fact_ary)
         val_support_fact_f1_ary = np.array(val_support_fact_f1_list)
-        val_support_fact_f1 = np.mean(
-            val_support_fact_f1_ary[np.logical_not(np.isnan(val_support_fact_f1_ary))])
+        val_support_fact_f1 = np.sum(
+            val_support_fact_f1_ary[support_fact_idx] * val_num_support_fact_ary[support_fact_idx]
+        ) / np.sum(val_num_support_fact_ary)
         val_joint_metric_ary = np.array(val_joint_metric_list)
-        val_joint_metric = np.mean(
-            val_joint_metric_ary[np.logical_not(np.isnan(val_joint_metric_ary))])
+        val_joint_metric = np.sum(
+            val_joint_metric_ary[support_fact_idx] * val_num_support_fact_ary[support_fact_idx]
+        ) / np.sum(val_num_support_fact_ary)
 
         print(" validation ".center(25, "="))
         print("span_loss:{:.4f}\t answer_type_loss:{:.4f}\t"

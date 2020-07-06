@@ -137,7 +137,8 @@ def cal_metric_batch(predicts, labels):
         numerator += len(intersection)
         recall_denominator += len(label)
         precision_denominator += len(predict)
-        if len(intersection) == len(union):
+        if len(intersection) == len(union) and len(intersection) > 0:
+            # not considering empty predition in accuracy
             accu_cnt += 1
 
     if recall_denominator == 0:

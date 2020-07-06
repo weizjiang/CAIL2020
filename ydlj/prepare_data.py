@@ -190,21 +190,24 @@ def separate_sentence(text, separators=None, non_starting_chars=None):
 
 
 def analyze_data():
-    # data_file = r'data/train.json'
+    data_file = r'data/train.json'
     # data_file = r'data/dev.json'
     # data_file = r'data/train_2019_1sentence_converted.json'
-    data_file = r'data/data_combine2019_1sentence/train.json'
+    # data_file = r'data/data_combine2019_1sentence/train.json'
 
     with open(data_file, 'r', encoding='utf-8') as f_in:
         data = json.load(f_in)
 
     answer_types = ['span', 'yes', 'no', 'unknown']
-    answers = [item['answer'] if item['answer'] in answer_types else 'span' for item in data]
+    answers = [item['answer'] if item['answer'] in answer_types[1:] else 'span' for item in data]
+    span_lengths = [len(item['answer']) for item in data if item['answer'] not in answer_types[1:]]
     print('-- ', data_file)
     print('total samples: {}'.format(len(answers)))
     for answer_type in answer_types:
         type_count = answers.count(answer_type)
         print('{}: {:.1f}% ({})'.format(answer_type, 100 * type_count/len(answers), type_count))
+
+    print('max span length: {}'.format(max(span_lengths)))
 
 
 if __name__ == '__main__':
