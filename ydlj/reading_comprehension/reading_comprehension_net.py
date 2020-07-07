@@ -892,7 +892,7 @@ class ReadingComprehensionModel:
 
         avg_answer_score = 0.
         span_iou = []
-        num_support_fact = 0
+
         for idx in range(batch_size):
             if answer_type_predicts[idx] != gold['q_type'][idx]:
                 answer_score = 0.
@@ -905,9 +905,6 @@ class ReadingComprehensionModel:
                 answer_score = max(intersection_end - intersection_start, 0) / (union_end - union_start)
                 span_iou.append(answer_score)
             else:
-                if gold['q_type'][idx] != 3:
-                    # number of non-unknown answers, which need support facts
-                    num_support_fact += 1
                 answer_score = 1.
 
             avg_answer_score += answer_score
@@ -920,6 +917,10 @@ class ReadingComprehensionModel:
             avg_span_iou = np.mean(span_iou)
         else:
             avg_span_iou = -1
+
+        # number for questions what need suppfort facts (not 'unknown' type)
+        num_support_fact = np.sum([1 if answer_type_predicts[idx] != 3 and gold['q_type'][idx] != 3 else 0
+                                   for idx in range(batch_size)])
 
         support_fact_labels = [list(np.nonzero(gold['is_support'][idx])[0]) for idx in range(batch_size)]
 
@@ -1064,7 +1065,7 @@ class ReadingComprehensionModel:
         val_answer_score = np.mean(val_answer_score_list)
         val_support_fact_accu = np.mean(val_support_fact_accu_list)
         val_num_support_fact_ary = np.array(val_num_support_fact_list)
-        support_fact_idx = np.array(val_num_support_fact_ary) > 0
+        support_fact_idx = val_num_support_fact_ary > 0
         val_support_fact_recall_ary = np.array(val_support_fact_recall_list)
         val_support_fact_recall = np.sum(
             val_support_fact_recall_ary[support_fact_idx] * val_num_support_fact_ary[support_fact_idx]
