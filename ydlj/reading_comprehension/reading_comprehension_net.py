@@ -349,7 +349,7 @@ class ReadingComprehensionModel:
 
         elif embedding_type == 'MaxPoolDense':
             with tf.variable_scope("MaxPoolDense" + name_appendix, reuse=tf.AUTO_REUSE):
-                pool_out = tf.reduce_max(token_embedding - 100 * tf.expand_dims(1 - sentence_mask, 2),
+                pool_out = tf.reduce_max(token_embedding - 100 * tf.expand_dims(1 - sentence_mask, -1),
                                          axis=1, keepdims=False, name="max_pool")
                 fc_in = tf.layers.dropout(pool_out, rate=self.dropout_rate, training=self.is_training)
                 fc_out = tf.layers.dense(
@@ -484,16 +484,20 @@ class ReadingComprehensionModel:
             tf.expand_dims(tf.cast(self.input_sentence_mapping, tf.float32), 3),
             tf.expand_dims(token_embedding, 2))
 
-        sentence_token_embedding = tf.reshape(tf.transpose(sentence_token_embedding, perm=[0, 2, 1, 3]),
-                                              (-1, sentence_len, self.word_embed_size))
-
-        sentence_mask = tf.reshape(tf.transpose(self.input_sentence_mapping, perm=[0, 2, 1]), (-1, sentence_len))
+        if self.sentence_embedding_type != 'MaxPoolDense':
+            # reshape to: (batch_size*num_sentence) x max_sentence_length x hidden_size
+            sentence_token_embedding = tf.reshape(tf.transpose(sentence_token_embedding, perm=[0, 2, 1, 3]),
+                                                  (-1, sentence_len, self.word_embed_size))
+            sentence_mask = tf.reshape(tf.transpose(self.input_sentence_mapping, perm=[0, 2, 1]), (-1, sentence_len))
+        else:
+            # 'MaxPoolDense' can process 4-D input
+            sentence_mask = self.input_sentence_mapping
         sentence_embedding = self.sentence_embedding_model(sentence_token_embedding, sentence_mask,
                                                            embedding_type=self.sentence_embedding_type,
                                                            embedding_size=self.sentence_embed_size,
                                                            name='support_fact_sentence')
-
-        sentence_embedding = tf.reshape(sentence_embedding, (batch_size, -1, self.sentence_embed_size))
+        if self.sentence_embedding_type != 'MaxPoolDense':
+            sentence_embedding = tf.reshape(sentence_embedding, (batch_size, -1, self.sentence_embed_size))
 
         support_fact_logits = tf.layers.dense(
             sentence_embedding,
@@ -505,8 +509,8 @@ class ReadingComprehensionModel:
         support_fact_logits = tf.squeeze(support_fact_logits, axis=2)
 
         # Mask the real sentences. For non sentence position, the cross-entropy will be 0.
-        sentence_mask = tf.cast(tf.reduce_any(self.input_sentence_mapping > 0, axis=1), tf.float32)
-        support_fact_logits = support_fact_logits - 100 * (1 - sentence_mask)
+        valid_sentence_mask = tf.cast(tf.reduce_any(self.input_sentence_mapping > 0, axis=1), tf.float32)
+        support_fact_logits = support_fact_logits - 100 * (1 - valid_sentence_mask)
 
         self.support_fact_prob = tf.sigmoid(support_fact_logits, name='support_fact_prob')
 
@@ -514,7 +518,7 @@ class ReadingComprehensionModel:
         # maybe no need, since the train data has valid support fact label (empty) for 'unknown' case
         support_fact_ce = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.input_support_facts,
                                                                   logits=support_fact_logits)
-        self.support_fact_loss = tf.divide(tf.reduce_sum(support_fact_ce), tf.reduce_sum(sentence_mask),
+        self.support_fact_loss = tf.divide(tf.reduce_sum(support_fact_ce), tf.reduce_sum(valid_sentence_mask),
                                            name='support_fact_loss')
 
         loss = (self.span_loss_weight * self.span_loss +
