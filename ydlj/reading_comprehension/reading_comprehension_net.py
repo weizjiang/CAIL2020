@@ -922,7 +922,7 @@ class ReadingComprehensionModel:
         # only consider the neither prediction type or gold type is 'unknown', to avoid 'nan' recall or precision.
         # also consider the 'is_support' indicator in gold, since the support fact sentence may be truncated.
         num_support_fact = np.sum(
-            np.logical_and(answer_type_predicts != 3, gold['q_type'] != 3, np.any(gold['is_support'], axis=1))
+            np.logical_and(answer_type_predicts != 3, np.any(gold['is_support'], axis=1))
         )
 
         support_fact_labels = [list(np.nonzero(gold['is_support'][idx])[0]) for idx in range(batch_size)]
