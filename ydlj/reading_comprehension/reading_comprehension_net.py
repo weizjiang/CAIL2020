@@ -504,14 +504,18 @@ class ReadingComprehensionModel:
 
         support_fact_logits = tf.squeeze(support_fact_logits, axis=2)
 
+        # Mask the real sentences. For non sentence position, the cross-entropy will be 0.
+        sentence_mask = tf.cast(tf.reduce_any(self.input_sentence_mapping > 0, axis=1), tf.float32)
+        support_fact_logits = support_fact_logits - 100 * (1 - sentence_mask)
+
         self.support_fact_prob = tf.sigmoid(support_fact_logits, name='support_fact_prob')
 
         # only consier answer type not 'unknown'? use labled or predicted type?
         # maybe no need, since the train data has valid support fact label (empty) for 'unknown' case
-        self.support_fact_loss = tf.reduce_mean(
-            tf.nn.sigmoid_cross_entropy_with_logits(labels=self.input_support_facts,
-                                                    logits=support_fact_logits),
-            name='support_fact_loss')
+        support_fact_ce = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.input_support_facts,
+                                                                  logits=support_fact_logits)
+        self.support_fact_loss = tf.divide(tf.reduce_sum(support_fact_ce), tf.reduce_sum(sentence_mask),
+                                           name='support_fact_loss')
 
         loss = (self.span_loss_weight * self.span_loss +
                 self.answer_type_loss_weight * self.answer_type_loss +

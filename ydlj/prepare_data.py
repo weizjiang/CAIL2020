@@ -208,6 +208,19 @@ def analyze_data():
         print('{}: {:.1f}% ({})'.format(answer_type, 100 * type_count/len(answers), type_count))
 
     print('max span length: {}'.format(max(span_lengths)))
+    num_long_span = 0
+    for item in data:
+        if len(item['answer']) >= 50:
+            num_long_span += 1
+            print(item['answer'])
+    print('span length > 50 sample: {} in {}'.format(num_long_span, len(data)))
+
+    # for item in data:
+    #     if item['answer'].find('，') >= 0:
+    #         print(item)
+
+    num_sentences = [len(item['context'][0][1]) for item in data]
+    print('max number of sentences: {}'.format(max(num_sentences)))
 
 
 if __name__ == '__main__':

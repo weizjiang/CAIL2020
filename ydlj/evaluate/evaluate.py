@@ -139,7 +139,11 @@ if __name__ == '__main__':
     # prediction_file = r'../result/train_v2_pred_seed_5_epoch_8_99999.json'
     # prediction_file = r'../result/train_v3_pred_seed_74_epoch_10_99999.json'
     # prediction_file = r'../result/train_v4_pred_seed_82_epoch_10_99999.json'
-    prediction_file = r'../reading_comprehension/results/result_rc_20200701-211818.json'
+
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200701-211818_threshold_0.5.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200701-211818_threshold_0.2.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200702-144524_threshold_0.2.json'
+    prediction_file = r'../reading_comprehension/results/result_rc_20200702-144524_threshold_0.1.json'
 
     gold_file = r'../data/dev.json'
 
