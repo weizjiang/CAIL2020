@@ -20,10 +20,10 @@ if __name__ == '__main__':
     with gzip.open(test_set_feature_file, 'rb') as f:
         test_set_features = pickle.load(f)
 
-    print('missing support fact ids:')
-    for example in test_set_features:
-        if example.ans_type != 3 and len(example.sup_fact_ids) == 0:
-            print(example.qas_id)
+    # print('missing support fact ids:')
+    # for example in test_set_features:
+    #     if example.ans_type != 3 and len(example.sup_fact_ids) == 0:
+    #         print(example.qas_id)
 
     (val_span_loss, val_answer_type_loss, val_support_fact_loss, val_loss, val_answer_type_accu,
      val_span_iou, val_answer_score, val_support_fact_accu, val_support_fact_recall,

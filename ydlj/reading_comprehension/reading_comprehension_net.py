@@ -16,7 +16,7 @@ import json
 
 from reading_comprehension.utils import checkmate as cm
 from reading_comprehension.utils.pipelines import token_to_index as tokenize
-from reading_comprehension.utils.data_helpers import get_label_using_scores_by_threshold, cal_metric_batch
+from reading_comprehension.utils.data_helpers import get_label_using_scores_by_threshold, cal_metric_batch, cal_F
 from reading_comprehension.utils.convert_answer import convert_to_tokens
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../libs'))
@@ -753,6 +753,9 @@ class ReadingComprehensionModel:
                         }
                     )
 
+                    answer_type_predicts, support_fact_predicts = self.predict_answer_type_and_support_fact(
+                        answer_type_prob, support_fact_prob)
+
                     (answer_type_accu,
                      span_iou,
                      answer_score,
@@ -767,8 +770,8 @@ class ReadingComprehensionModel:
                         {
                             'span_start_pos': span_start_pos,
                             'span_end_pos': span_end_pos,
-                            'answer_type_prob': answer_type_prob,
-                            'support_fact_prob': support_fact_prob
+                            'answer_type': answer_type_predicts,
+                            'support_fact': support_fact_predicts
                         },
                         batch
                     )
@@ -882,12 +885,10 @@ class ReadingComprehensionModel:
 
         return answer_type_predicts, support_fact_predicts
 
-    def evaluate(self, predict, gold, support_fact_threshold=None):
+    def evaluate(self, predict, gold):
         batch_size = gold['context_idxs'].shape[0]
 
-        answer_type_predicts, support_fact_predicts = self.predict_answer_type_and_support_fact(
-            predict['answer_type_prob'], predict['support_fact_prob'], support_fact_threshold)
-
+        answer_type_predicts = np.array(predict['answer_type'])
         answer_type_accu = np.sum(answer_type_predicts == gold['q_type']) / batch_size
 
         avg_answer_score = 0.
@@ -928,7 +929,7 @@ class ReadingComprehensionModel:
         support_fact_labels = [list(np.nonzero(gold['is_support'][idx])[0]) for idx in range(batch_size)]
 
         support_fact_accu, support_fact_recall, support_fact_precision, support_fact_f1 = cal_metric_batch(
-            support_fact_predicts, support_fact_labels)
+            predict['support_fact'], support_fact_labels)
 
         joint_metric = avg_answer_score * support_fact_f1
 
@@ -1000,6 +1001,8 @@ class ReadingComprehensionModel:
         val_num_span_list = []
         val_num_support_fact_list = []
 
+        all_answer_type_predicts = np.array([], dtype=np.int32)
+        all_answer_type_labels = np.array([], dtype=np.int32)
         for val_batch in self.episode_iter(test_set, test_batch_size, shuffle=False, max_input_len=max_input_len):
             (val_step_span_start_pos, val_step_span_end_pos, val_step_answer_type_prob,
              val_step_support_fact_prob,
@@ -1019,6 +1022,12 @@ class ReadingComprehensionModel:
                 }
             )
 
+            answer_type_predicts, support_fact_predicts = self.predict_answer_type_and_support_fact(
+                val_step_answer_type_prob, val_step_support_fact_prob, support_fact_threshold)
+
+            all_answer_type_predicts = np.hstack([all_answer_type_predicts, answer_type_predicts])
+            all_answer_type_labels = np.hstack([all_answer_type_labels, val_batch['q_type']])
+
             (val_step_answer_type_accu,
              val_step_span_iou,
              val_step_answer_score,
@@ -1033,11 +1042,10 @@ class ReadingComprehensionModel:
                 {
                     'span_start_pos': val_step_span_start_pos,
                     'span_end_pos': val_step_span_end_pos,
-                    'answer_type_prob': val_step_answer_type_prob,
-                    'support_fact_prob': val_step_support_fact_prob
+                    'answer_type': answer_type_predicts,
+                    'support_fact': support_fact_predicts
                 },
-                val_batch,
-                support_fact_threshold
+                val_batch
             )
 
             val_span_loss_list.append(val_step_span_loss)
@@ -1090,9 +1098,31 @@ class ReadingComprehensionModel:
             val_joint_metric_ary[support_fact_idx] * val_num_support_fact_ary[support_fact_idx]
         ) / np.sum(val_num_support_fact_ary)
 
+        print("===== answer type results =====")
+        answer_types = ['span', 'yes', 'no', 'unknown']
+        for label_idx in range(self.num_answer_type):
+            if sum(all_answer_type_predicts == label_idx) == 0:
+                precision = float('NaN')
+            else:
+                precision = sum(np.logical_and(all_answer_type_predicts == label_idx,
+                                               all_answer_type_labels == all_answer_type_predicts)) / \
+                            sum(all_answer_type_predicts == label_idx)
+            if sum(all_answer_type_labels == label_idx) == 0:
+                recall = float('NaN')
+            else:
+                recall = sum(np.logical_and(all_answer_type_labels == label_idx,
+                                            all_answer_type_labels == all_answer_type_predicts)) / \
+                         sum(all_answer_type_labels == label_idx)
+            if np.isnan(recall) or np.isnan(precision):
+                f1 = float('NaN')
+            else:
+                f1 = cal_F(recall, precision)
+            print("{:s}: Recall {:.3f}, Precision {:.3f}, F1 {:.3f}"
+                  .format(answer_types[label_idx], recall, precision, f1))
+
         print(" test ".center(25, "="))
         print("span_loss:{:.4f}\tanswer_type_loss:{:.4f}\tsupport_fact_loss:{:.4f}\tloss:{:.4f}\n"
-              "answer_type_accu:{:.4f}\tval_span_iou:{:.4f}\tanswer_score:{:.4f}\t"
+              "answer_type_accu:{:.4f}\tspan_iou:{:.4f}\tanswer_score:{:.4f}\t"
               "support_fact_accu:{:.4f}\tsupport_fact_recall:{:.4f}\tsupport_fact_precision:{:.4f}\t"
               "support_fact_f1:{:.4f}\tjoint_metric:{:.4f}".format(
                 val_span_loss, val_answer_type_loss, val_support_fact_loss, val_loss, val_answer_type_accu,
@@ -1111,13 +1141,17 @@ class ReadingComprehensionModel:
         elif batch_size == -1:
             batch_size = num_sample
 
+        if support_fact_threshold is None:
+            support_fact_threshold = self.support_fact_threshold
+
         if result_file is None:
             m = re.search(r'[\\/](rc_[\d-]*)[\\/]', self.LoadedModel)
             if m:
                 model_name = m.group(1)
-                result_file = 'results/result_{}.json'.format(model_name)
+                result_file = 'results/result_{}_threshold_{}.json'.format(
+                    model_name, support_fact_threshold)
             else:
-                result_file = 'results/result.json'
+                result_file = 'results/result_threshold_{}.json'.format(support_fact_threshold)
 
         example_dict = {e.qas_id: e for e in examples}
         feature_dict = {f.qas_id: f for f in features}
