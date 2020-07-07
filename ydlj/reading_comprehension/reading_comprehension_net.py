@@ -1082,12 +1082,14 @@ class ReadingComprehensionModel:
             val_joint_metric_ary[support_fact_idx] * val_num_support_fact_ary[support_fact_idx]
         ) / np.sum(val_num_support_fact_ary)
 
-        print(" validation ".center(25, "="))
-        print("span_loss:{:.4f}\t answer_type_loss:{:.4f}\t"
-              "support_fact_loss:{:.4f}\t loss:{:.4f}\tanswer_score:{:.4f}\t"
+        print(" test ".center(25, "="))
+        print("span_loss:{:.4f}\tanswer_type_loss:{:.4f}\tsupport_fact_loss:{:.4f}\tloss:{:.4f}\t"
+              "answer_type_accu:{:.4f}\tval_span_iou:{:.4f}\tanswer_score:{:.4f}\t"
+              "support_fact_accu:{:.4f}\tsupport_fact_recall:{:.4f}\tsupport_fact_precision:{:.4f}\t"
               "support_fact_f1:{:.4f}\tjoint_metric:{:.4f}".format(
-                val_span_loss, val_answer_type_loss, val_support_fact_loss, val_loss,
-                val_answer_score, val_support_fact_f1, val_joint_metric))
+                val_span_loss, val_answer_type_loss, val_support_fact_loss, val_loss, val_answer_type_accu,
+                val_span_iou, val_answer_score, val_support_fact_accu, val_support_fact_recall,
+                val_support_fact_precision, val_support_fact_f1, val_joint_metric))
 
         return (val_span_loss, val_answer_type_loss, val_support_fact_loss, val_loss, val_answer_type_accu,
                 val_span_iou, val_answer_score, val_support_fact_accu, val_support_fact_recall,
