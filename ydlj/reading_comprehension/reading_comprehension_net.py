@@ -507,7 +507,7 @@ class ReadingComprehensionModel:
         self.support_fact_prob = tf.sigmoid(support_fact_logits, name='support_fact_prob')
 
         # only consier answer type not 'unknown'? use labled or predicted type?
-        # maybe no need, since the train data has valid support fact label (empty) for 'unknow' case
+        # maybe no need, since the train data has valid support fact label (empty) for 'unknown' case
         self.support_fact_loss = tf.reduce_mean(
             tf.nn.sigmoid_cross_entropy_with_logits(labels=self.input_support_facts,
                                                     logits=support_fact_logits),
@@ -919,8 +919,11 @@ class ReadingComprehensionModel:
             avg_span_iou = -1
 
         # number for questions what need suppfort facts (not 'unknown' type)
-        num_support_fact = np.sum([1 if answer_type_predicts[idx] != 3 and gold['q_type'][idx] != 3 else 0
-                                   for idx in range(batch_size)])
+        # only consider the neither prediction type or gold type is 'unknown', to avoid 'nan' recall or precision.
+        # also consider the 'is_support' indicator in gold, since the support fact sentence may be truncated.
+        num_support_fact = np.sum(
+            np.logical_and(answer_type_predicts != 3, gold['q_type'] != 3, np.any(gold['is_support'], axis=1))
+        )
 
         support_fact_labels = [list(np.nonzero(gold['is_support'][idx])[0]) for idx in range(batch_size)]
 
@@ -1052,20 +1055,24 @@ class ReadingComprehensionModel:
             val_num_span_list.append(val_step_num_span)
             val_num_support_fact_list.append(val_step_num_support_fact)
 
+        val_num_span_ary = np.array(val_num_span_list)
+        span_idx = val_num_span_ary > 0
         val_span_loss_ary = np.array(val_span_loss_list)
-        val_span_loss = np.mean(val_span_loss_ary[val_span_loss_ary > 0])
+        val_span_loss = np.sum(val_span_loss_ary[span_idx] * val_num_span_ary[span_idx]) / np.sum(val_num_span_ary)
+
         val_answer_type_loss = np.mean(val_answer_type_loss_list)
         val_support_fact_loss = np.mean(val_support_fact_loss_list)
         val_loss = np.mean(val_loss_list)
         val_answer_type_accu = np.mean(val_answer_type_accu_list)
         val_span_iou_ary = np.array(val_span_iou_list)
-        val_num_span_ary = np.array(val_num_span_list)
-        span_idx = val_num_span_ary > 0
-        val_span_iou = (np.sum(val_span_iou_ary[span_idx] * val_num_span_ary[span_idx]) / np.sum(val_num_span_ary))
+        val_span_iou = np.sum(val_span_iou_ary[span_idx] * val_num_span_ary[span_idx]) / np.sum(val_num_span_ary)
         val_answer_score = np.mean(val_answer_score_list)
-        val_support_fact_accu = np.mean(val_support_fact_accu_list)
+
         val_num_support_fact_ary = np.array(val_num_support_fact_list)
         support_fact_idx = val_num_support_fact_ary > 0
+        val_support_fact_accu_ary = np.array(val_support_fact_accu_list)
+        val_support_fact_accu = np.sum(val_support_fact_accu_ary[support_fact_idx] *
+                                       val_num_support_fact_ary[support_fact_idx]) / np.sum(val_num_support_fact_ary)
         val_support_fact_recall_ary = np.array(val_support_fact_recall_list)
         val_support_fact_recall = np.sum(
             val_support_fact_recall_ary[support_fact_idx] * val_num_support_fact_ary[support_fact_idx]
@@ -1084,7 +1091,7 @@ class ReadingComprehensionModel:
         ) / np.sum(val_num_support_fact_ary)
 
         print(" test ".center(25, "="))
-        print("span_loss:{:.4f}\tanswer_type_loss:{:.4f}\tsupport_fact_loss:{:.4f}\tloss:{:.4f}\t"
+        print("span_loss:{:.4f}\tanswer_type_loss:{:.4f}\tsupport_fact_loss:{:.4f}\tloss:{:.4f}\n"
               "answer_type_accu:{:.4f}\tval_span_iou:{:.4f}\tanswer_score:{:.4f}\t"
               "support_fact_accu:{:.4f}\tsupport_fact_recall:{:.4f}\tsupport_fact_precision:{:.4f}\t"
               "support_fact_f1:{:.4f}\tjoint_metric:{:.4f}".format(
