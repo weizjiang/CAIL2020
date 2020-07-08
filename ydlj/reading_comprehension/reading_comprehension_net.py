@@ -741,7 +741,7 @@ class ReadingComprehensionModel:
                 'query_mapping': query_mapping[valid_idx, :max_c_len],
                 'y1': y1[valid_idx],
                 'y2': y2[valid_idx],
-                'ids': list(np.array(ids)[valid_idx]),
+                'ids': ids,
                 'q_type': q_type[valid_idx],
                 'start_mapping': start_mapping[valid_idx, :max_sent_cnt, :max_c_len],
                 'all_mapping': all_mapping[valid_idx, :max_c_len, :max_sent_cnt],
