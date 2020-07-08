@@ -120,6 +120,7 @@ class ReadingComprehensionModel:
             self.lstm_num_layer = BiLSTM_Config.get('num_layer', 1)
             self.lstm_attention_enable = BiLSTM_Config.get('attention_enable', True)
 
+        self.span_loss_all_samples = config.get('span_loss_all_samples', False)
         self.span_loss_weight = config.get('span_loss_weight', 1.0)
         self.answer_type_loss_weight = config.get('answer_type_loss_weight', 1.0)
         self.support_fact_loss_weight = config.get('support_fact_loss_weight', 1.0)
@@ -436,6 +437,12 @@ class ReadingComprehensionModel:
 
         # decrease the logits for padding and query tokens
         contex_sentences_mask = tf.reduce_sum(self.input_sentence_mapping, axis=2, keepdims=True)
+
+        if self.span_loss_all_samples:
+            # keep the position on first token
+            contex_sentences_mask = contex_sentences_mask + tf.expand_dims(
+                tf.cast(tf.range(sentence_len) < 1, tf.float32) + tf.zeros([batch_size, sentence_len]), 2)
+
         span_logits = span_logits - 100 * (1 - contex_sentences_mask)
 
         # batch_size x max_sentence_length x max_sentence_length
@@ -455,11 +462,15 @@ class ReadingComprehensionModel:
         span_end_ce = tf.nn.softmax_cross_entropy_with_logits(labels=tf.one_hot(self.input_span_end, sentence_len),
                                                               logits=span_logits[:, :, 1])
         span_ce = span_start_ce + span_end_ce
-        span_answer_samples = tf.where(tf.equal(self.input_answer_type, 0))
-        span_loss = tf.cond(tf.equal(tf.size(span_answer_samples), 0),
-                            lambda: tf.constant(0, tf.float32),
-                            lambda: tf.reduce_mean(tf.gather(span_ce, span_answer_samples)))
-        self.span_loss = tf.identity(span_loss, name='span_loss')
+
+        if self.span_loss_all_samples:
+            self.span_loss = tf.reduce_mean(span_ce, name='span_loss')
+        else:
+            span_answer_samples = tf.where(tf.equal(self.input_answer_type, 0))
+            span_loss = tf.cond(tf.equal(tf.size(span_answer_samples), 0),
+                                lambda: tf.constant(0, tf.float32),
+                                lambda: tf.reduce_mean(tf.gather(span_ce, span_answer_samples)))
+            self.span_loss = tf.identity(span_loss, name='span_loss')
 
         answer_type_embedding = self.sentence_embedding_model(token_embedding, self.input_mask,
                                                               embedding_type=self.answer_type_embedding_type,
@@ -627,7 +638,8 @@ class ReadingComprehensionModel:
             episode_size = num_sample
         num_episode = int((num_sample - 1) / episode_size) + 1
 
-        IGNORE_INDEX = -100
+        # 0 corresponds to [CLS] token for BERT tokenizer
+        IGNORE_INDEX = 0
         for i in range(num_episode):
             start_id = i * episode_size
             end_id = min((i + 1) * episode_size, num_sample)

@@ -12,15 +12,19 @@ DataSet: {
   TrainPercentage: -1,
 
   # train set example file path
+#  TrainSetExampleFile: '../data/train_example.pkl.gz',
   TrainSetExampleFile: '../data/data_combine2019_1sentence/train_example.pkl.gz',
 
   # train set reature file path
+#  TrainSetFeatureFile: '../data/train_feature.pkl.gz',
   TrainSetFeatureFile: '../data/data_combine2019_1sentence/train_feature.pkl.gz',
 
   # dev set example file path
+#  DevSetExampleFile: '../data/dev_example.pkl.gz',
   DevSetExampleFile: '../data/data_combine2019_1sentence/dev_example.pkl.gz',
 
   # dev set reature file path
+#  DevSetFeatureFile: '../data/dev_feature.pkl.gz',
   DevSetFeatureFile: '../data/data_combine2019_1sentence/dev_feature.pkl.gz',
   }
 
@@ -92,7 +96,7 @@ answer_type_embed_size: 200
 # 'BiLSTM': BiLSTM model, with attention mechanism
 # 'FirstPoolDense': Using the fist token and a dense layer, same as BERT pooling. Should only be used with BERT model.
 # 'MaxPoolDense': max pooling and full connect layer
-answer_type_embedding_type: 'FirstPoolDense'
+answer_type_embedding_type: 'MaxPoolDense'
 
 # sentence embedding size
 sentence_embed_size: 200
@@ -144,6 +148,10 @@ BiLSTM: {
 ################################################################################
 # loss function parameters
 
+# whether to use all samples to calculate span loss
+# if true, also consider yes/no/unknown types labeled as [0,0]
+span_loss_all_samples: true
+
 # span loss weight
 span_loss_weight: 1.0
 
@@ -151,7 +159,7 @@ span_loss_weight: 1.0
 answer_type_loss_weight: 1.0
 
 # support tact loss weight
-support_fact_loss_weight: 1.0
+support_fact_loss_weight: 5.0
 
 ################################################################################
 # optimization parameters
@@ -192,10 +200,13 @@ grad_threshold: 5.0
 # training parameters
 
 # number of epoches
-num_epoch: 20
+num_epoch: 50
 
 # batch_size
-batch_size: 200
+batch_size: 32
+
+# number of samples for each validation step
+validate_size: 400
 
 # period for model saving, in number of steps
 # default: 50
@@ -203,10 +214,7 @@ save_period: 51
 
 # period for validation and best model saving, in number of steps
 # default: 20
-validate_period: 20
-
-# number of samples for each validation step
-validate_size: 400
+validate_period: 100
 
 ################################################################################
 # other parameters
