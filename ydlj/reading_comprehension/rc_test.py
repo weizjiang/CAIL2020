@@ -14,7 +14,10 @@ if __name__ == '__main__':
 
     RCModel = ReadingComprehensionModel(config='configs/reading_comprehension_config.yml')
 
-    RCModel.load_model(r'runs/rc_20200701-211818', 'L')
+    # RCModel.load_model(r'runs/rc_20200701-211818', 'L')
+    # RCModel.load_model(r'runs/rc_20200702-144524', 'L')
+    # RCModel.load_model(r'runs/rc_20200707-193921', 'B')
+    RCModel.load_model(r'runs/rc_20200707-204721', 'B')
 
     test_set_feature_file = '../data/dev_feature.pkl.gz'
     with gzip.open(test_set_feature_file, 'rb') as f:
@@ -28,6 +31,6 @@ if __name__ == '__main__':
     (val_span_loss, val_answer_type_loss, val_support_fact_loss, val_loss, val_answer_type_accu,
      val_span_iou, val_answer_score, val_support_fact_accu, val_support_fact_recall,
      val_support_fact_precision, val_support_fact_f1, val_joint_metric
-     ) = RCModel.test(test_set=test_set_features, test_batch_size=2)
+     ) = RCModel.test(test_set=test_set_features, test_batch_size=32, support_fact_threshold=0.5)
 
     print('Test Done.')

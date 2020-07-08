@@ -6,7 +6,7 @@ echo $LD_LIBRARY_PATH
 date
 bert_dir='/home/jiangwei/work/bert/chinese_roberta_wwm_ext_pytorch/'
 python run_cail.py \
-    --name train_v2 \
+    --name train_v4 \
     --bert_model $bert_dir \
     --data_dir ../data/data_combine2019_1sentence \
     --batch_size 6 \
