@@ -959,7 +959,7 @@ class ReadingComprehensionModel:
                 intersection_end = min([predict['span_end_pos'][idx], gold['y2'][idx]])
                 union_start = min([predict['span_start_pos'][idx], gold['y1'][idx]])
                 union_end = max([predict['span_end_pos'][idx], gold['y2'][idx]])
-                answer_score = max(intersection_end - intersection_start, 0) / (union_end - union_start)
+                answer_score = max(intersection_end - intersection_start + 1, 0) / (union_end - union_start + 1)
                 span_iou.append(answer_score)
             else:
                 answer_score = 1.
