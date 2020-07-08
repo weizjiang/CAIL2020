@@ -190,8 +190,8 @@ def separate_sentence(text, separators=None, non_starting_chars=None):
 
 
 def analyze_data():
-    data_file = r'data/train.json'
-    # data_file = r'data/dev.json'
+    # data_file = r'data/train.json'
+    data_file = r'data/dev.json'
     # data_file = r'data/train_2019_1sentence_converted.json'
     # data_file = r'data/data_combine2019_1sentence/train.json'
 
@@ -209,15 +209,16 @@ def analyze_data():
 
     print('max span length: {}'.format(max(span_lengths)))
     num_long_span = 0
-    for item in data:
-        if len(item['answer']) >= 50:
-            num_long_span += 1
-            print(item['answer'])
+    # for item in data:
+    #     if len(item['answer']) >= 50:
+    #         num_long_span += 1
+    #         print(item['answer'])
     print('span length > 50 sample: {} in {}'.format(num_long_span, len(data)))
 
-    # for item in data:
-    #     if item['answer'].find('，') >= 0:
-    #         print(item)
+    for item in data:
+        if item['answer'].find('，') >= 0 or item['answer'].find('。') >= 0 or item['answer'].find('；') >= 0:
+            print(item['answer'])
+            # print(item)
 
     num_sentences = [len(item['context'][0][1]) for item in data]
     print('max number of sentences: {}'.format(max(num_sentences)))

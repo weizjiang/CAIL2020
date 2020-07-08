@@ -143,7 +143,11 @@ if __name__ == '__main__':
     # prediction_file = r'../reading_comprehension/results/result_rc_20200701-211818_threshold_0.5.json'
     # prediction_file = r'../reading_comprehension/results/result_rc_20200701-211818_threshold_0.2.json'
     # prediction_file = r'../reading_comprehension/results/result_rc_20200702-144524_threshold_0.2.json'
-    prediction_file = r'../reading_comprehension/results/result_rc_20200702-144524_threshold_0.1.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200702-144524_threshold_0.1.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200707-193921_threshold_0.1.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200707-193921_threshold_0.2.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200707-204721_threshold_0.2.json'
+    prediction_file = r'../reading_comprehension/results/result_rc_20200707-204721_threshold_0.5.json'
 
     gold_file = r'../data/dev.json'
 

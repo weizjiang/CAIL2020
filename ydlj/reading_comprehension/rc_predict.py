@@ -24,7 +24,8 @@ if __name__ == '__main__':
 
     # start = timer()
 
-    RCModel.predict(examples=test_set_examples, features=test_set_features, batch_size=10, test_per_sample=True)
+    RCModel.predict(examples=test_set_examples, features=test_set_features, batch_size=10,
+                    test_per_sample=True, restrict_answer_span=True)
 
     # end = timer()
     # print('- Done in %.3f seconds -' % (end - start))

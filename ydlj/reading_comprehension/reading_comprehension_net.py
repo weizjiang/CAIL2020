@@ -53,6 +53,7 @@ class ReadingComprehensionModel:
         self.max_input_len = config.get('max_input_len', 16)  # the default max input length for padding
         self.max_num_sentence = config.get('max_num_sentence', 50)
         self.max_answer_len = config.get('max_answer_len', 50)
+        self.restrict_answer_span = config.get('restrict_answer_span', False)
         self.support_fact_threshold = config.get('support_fact_threshold', 0.5)
 
         self.word_embed_type = config.get('word_embedding_type', 'pretrained')  # word embedding type
@@ -755,10 +756,11 @@ class ReadingComprehensionModel:
 
             for epoch in range(1, epochs + 1):
                 for batch in self.episode_iter(train_set):
-                    (span_start_pos, span_end_pos, answer_type_prob, support_fact_prob,
+                    (span_start_pos, span_end_pos, span_start_prob, span_end_prob, answer_type_prob, support_fact_prob,
                      span_loss, answer_type_loss, support_fact_loss, reg_loss, loss, lr, _, global_step
                      ) = self.session.run(
-                        [self.span_start_pos, self.span_end_pos, self.answer_type_prob, self.support_fact_prob,
+                        [self.span_start_pos, self.span_end_pos, self.span_start_prob, self.span_end_prob,
+                         self.answer_type_prob, self.support_fact_prob,
                          self.span_loss, self.answer_type_loss, self.support_fact_loss, self.reg_loss, self.loss,
                          self.learning_rate, self.train_op, self.global_step],
                         feed_dict={
@@ -772,6 +774,13 @@ class ReadingComprehensionModel:
                             self.is_training: True
                         }
                     )
+
+                    if self.restrict_answer_span:
+                        span_start_predicts, span_end_predicts = self.predict_answer_span(
+                            batch['context_idxs'], span_start_prob, span_end_prob)
+                    else:
+                        span_start_predicts = span_start_pos
+                        span_end_predicts = span_end_pos
 
                     answer_type_predicts, support_fact_predicts = self.predict_answer_type_and_support_fact(
                         answer_type_prob, support_fact_prob)
@@ -788,8 +797,8 @@ class ReadingComprehensionModel:
                      num_support_fact
                      ) = self.evaluate(
                         {
-                            'span_start_pos': span_start_pos,
-                            'span_end_pos': span_end_pos,
+                            'span_start_pos': span_start_predicts,
+                            'span_end_pos': span_end_predicts,
                             'answer_type': answer_type_predicts,
                             'support_fact': support_fact_predicts
                         },
@@ -882,6 +891,33 @@ class ReadingComprehensionModel:
 
             coord.request_stop()
             coord.join(threads)
+
+    def predict_answer_span(self, input_tokens, span_start_prob, span_end_prob):
+        batch_size = input_tokens.shape[0]
+        sentence_len = input_tokens.shape[1]
+        span_prob = np.expand_dims(span_start_prob, axis=2) * np.expand_dims(span_end_prob, axis=1)
+        span_mask = np.tril(np.triu(np.ones((sentence_len, sentence_len)), 0), self.max_answer_len)
+        
+        # generate mask considerting the restriction characters, which is not allowed in the answer span
+        # note that the 'end' pos is included in the answer span
+        restrict_chars = ['，', '。', '；', '！', '？']
+        restrict_tokens = [self.bert_tokenizer.vocab[char] for char in restrict_chars]
+        restrict_mask = np.zeros([batch_size, sentence_len, sentence_len])
+        for sample_idx in range(batch_size):
+            for start_idx in range(sentence_len):
+                if input_tokens[sample_idx, start_idx] in restrict_tokens:
+                    continue
+                for end_idx in range(start_idx, sentence_len):
+                    if input_tokens[sample_idx, end_idx] in restrict_tokens:
+                        break
+                    restrict_mask[sample_idx, start_idx, end_idx] = 1
+
+        span_prob = span_prob * np.expand_dims(span_mask, 0) * restrict_mask
+
+        span_start_pos = np.argmax(np.max(span_prob, axis=2), axis=1)
+        span_end_pos = np.argmax(np.max(span_prob, axis=1), axis=1)
+
+        return span_start_pos, span_end_pos
 
     def predict_answer_type_and_support_fact(self, answer_type_prob, support_fact_prob, support_fact_threshold=None):
         answer_type_predicts = np.argmax(answer_type_prob, axis=1)
@@ -1005,7 +1041,12 @@ class ReadingComprehensionModel:
 
         self.LoadedModel = checkpoint_file
 
-    def test(self, test_set, test_batch_size=None, max_input_len=None, support_fact_threshold=None):
+    def test(self, test_set, test_batch_size=None, max_input_len=None, support_fact_threshold=None,
+             restrict_answer_span=None):
+
+        if restrict_answer_span is None:
+            restrict_answer_span = self.restrict_answer_span
+
         val_span_loss_list = []
         val_answer_type_loss_list = []
         val_support_fact_loss_list = []
@@ -1024,12 +1065,13 @@ class ReadingComprehensionModel:
         all_answer_type_predicts = np.array([], dtype=np.int32)
         all_answer_type_labels = np.array([], dtype=np.int32)
         for val_batch in self.episode_iter(test_set, test_batch_size, shuffle=False, max_input_len=max_input_len):
-            (val_step_span_start_pos, val_step_span_end_pos, val_step_answer_type_prob,
-             val_step_support_fact_prob,
+            (val_step_span_start_pos, val_step_span_end_pos, val_step_span_start_prob, val_step_span_end_prob,
+             val_step_answer_type_prob, val_step_support_fact_prob,
              val_step_span_loss, val_step_answer_type_loss, val_step_support_fact_loss, val_step_loss
              ) = self.session.run([
-                self.span_start_pos, self.span_end_pos, self.answer_type_prob, self.support_fact_prob,
-                self.span_loss, self.answer_type_loss, self.support_fact_loss, self.loss],
+                self.span_start_pos, self.span_end_pos, self.span_start_prob, self.span_end_prob,
+                self.answer_type_prob, self.support_fact_prob, self.span_loss, self.answer_type_loss,
+                self.support_fact_loss, self.loss],
                 feed_dict={
                     self.input_sentence: val_batch['context_idxs'],
                     self.input_mask: val_batch['context_mask'],
@@ -1041,6 +1083,13 @@ class ReadingComprehensionModel:
                     self.is_training: False
                 }
             )
+
+            if restrict_answer_span:
+                span_start_predicts, span_end_predicts = self.predict_answer_span(
+                    val_batch['context_idxs'], val_step_span_start_prob, val_step_span_end_prob)
+            else:
+                span_start_predicts = val_step_span_start_pos
+                span_end_predicts = val_step_span_end_pos
 
             answer_type_predicts, support_fact_predicts = self.predict_answer_type_and_support_fact(
                 val_step_answer_type_prob, val_step_support_fact_prob, support_fact_threshold)
@@ -1060,8 +1109,8 @@ class ReadingComprehensionModel:
              val_step_num_support_fact
              ) = self.evaluate(
                 {
-                    'span_start_pos': val_step_span_start_pos,
-                    'span_end_pos': val_step_span_end_pos,
+                    'span_start_pos': span_start_predicts,
+                    'span_end_pos': span_end_predicts,
                     'answer_type': answer_type_predicts,
                     'support_fact': support_fact_predicts
                 },
@@ -1154,7 +1203,7 @@ class ReadingComprehensionModel:
                 val_support_fact_precision, val_support_fact_f1, val_joint_metric)
 
     def predict(self, examples, features, batch_size=None, max_input_len=None, test_per_sample=True,
-                support_fact_threshold=None, result_file=None):
+                support_fact_threshold=None, result_file=None, restrict_answer_span=None):
         num_sample = len(examples)
         if batch_size is None:
             batch_size = self.batch_size
@@ -1163,6 +1212,9 @@ class ReadingComprehensionModel:
 
         if support_fact_threshold is None:
             support_fact_threshold = self.support_fact_threshold
+
+        if restrict_answer_span is None:
+            restrict_answer_span = self.restrict_answer_span
 
         if result_file is None:
             m = re.search(r'[\\/](rc_[\d-]*)[\\/]', self.LoadedModel)
@@ -1180,9 +1232,10 @@ class ReadingComprehensionModel:
         support_fact_dict = {}
 
         for val_batch in self.episode_iter(features, batch_size, shuffle=False, max_input_len=max_input_len):
-            (span_start_pos, span_end_pos, answer_type_prob, support_fact_prob
+            (span_start_pos, span_end_pos, span_start_prob, span_end_prob, answer_type_prob, support_fact_prob
              ) = self.session.run([
-                self.span_start_pos, self.span_end_pos, self.answer_type_prob, self.support_fact_prob],
+                self.span_start_pos, self.span_end_pos, self.span_start_prob, self.span_end_prob, self.answer_type_prob,
+                self.support_fact_prob],
                 feed_dict={
                     self.input_sentence: val_batch['context_idxs'],
                     self.input_mask: val_batch['context_mask'],
@@ -1191,13 +1244,20 @@ class ReadingComprehensionModel:
                 }
             )
 
+            if restrict_answer_span:
+                span_start_predicts, span_end_predicts = self.predict_answer_span(val_batch['context_idxs'],
+                                                                                  span_start_prob, span_end_prob)
+            else:
+                span_start_predicts = span_start_pos
+                span_end_predicts = span_end_pos
+
             answer_type_predicts, support_fact_predicts = self.predict_answer_type_and_support_fact(
                 answer_type_prob, support_fact_prob, support_fact_threshold)
 
             ids = val_batch['ids']
             answer_dict_batch = convert_to_tokens(example_dict, feature_dict, ids,
-                                                  list(span_start_pos),
-                                                  list(span_end_pos),
+                                                  list(span_start_predicts),
+                                                  list(span_end_predicts),
                                                   list(answer_type_predicts),
                                                   self.bert_tokenizer)
 

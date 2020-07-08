@@ -227,8 +227,11 @@ max_input_len: 512
 # maximum number of sentences in one example
 max_num_sentence: 50
 
-# maximum answer length, in tokens
+# maximum answer length, in tokens. Only impact prediction/evaluation.
 max_answer_len: 50
 
-# support fact threshold for prediction
+# retrict answer span by excluding special characters, e.g., punctuation. Only impact prediction/evaluation.
+restrict_answer_span: false
+
+# support fact threshold for prediction. Only impact prediction/evaluation.
 support_fact_threshold: 0.5
