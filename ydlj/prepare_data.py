@@ -191,8 +191,8 @@ def separate_sentence(text, separators=None, non_starting_chars=None):
 
 def analyze_data():
     # data_file = r'data/train.json'
-    data_file = r'data/dev.json'
-    # data_file = r'data/train_2019_1sentence_converted.json'
+    # data_file = r'data/dev.json'
+    data_file = r'data/train_2019_1sentence_converted.json'
     # data_file = r'data/data_combine2019_1sentence/train.json'
 
     with open(data_file, 'r', encoding='utf-8') as f_in:
@@ -207,21 +207,24 @@ def analyze_data():
         type_count = answers.count(answer_type)
         print('{}: {:.1f}% ({})'.format(answer_type, 100 * type_count/len(answers), type_count))
 
-    print('max span length: {}'.format(max(span_lengths)))
-    num_long_span = 0
-    # for item in data:
-    #     if len(item['answer']) >= 50:
-    #         num_long_span += 1
-    #         print(item['answer'])
-    print('span length > 50 sample: {} in {}'.format(num_long_span, len(data)))
+    print('max span length: {}\n'.format(max(span_lengths)))
 
+    print('span length > 50:')
+    num_long_span = 0
+    for item in data:
+        if len(item['answer']) >= 50:
+            num_long_span += 1
+            print(item['answer'])
+    print('span length > 50 #sample: {} in {}\n'.format(num_long_span, len(data)))
+
+    print('answer with punctuation:')
     for item in data:
         if item['answer'].find('，') >= 0 or item['answer'].find('。') >= 0 or item['answer'].find('；') >= 0:
             print(item['answer'])
             # print(item)
 
     num_sentences = [len(item['context'][0][1]) for item in data]
-    print('max number of sentences: {}'.format(max(num_sentences)))
+    print('\nmax number of sentences: {}'.format(max(num_sentences)))
 
 
 if __name__ == '__main__':

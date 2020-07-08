@@ -146,8 +146,10 @@ if __name__ == '__main__':
     # prediction_file = r'../reading_comprehension/results/result_rc_20200702-144524_threshold_0.1.json'
     # prediction_file = r'../reading_comprehension/results/result_rc_20200707-193921_threshold_0.1.json'
     # prediction_file = r'../reading_comprehension/results/result_rc_20200707-193921_threshold_0.2.json'
+    prediction_file = r'../reading_comprehension/results/result_rc_20200707-193921_threshold_0.2_restrict_span.json'
     # prediction_file = r'../reading_comprehension/results/result_rc_20200707-204721_threshold_0.2.json'
-    prediction_file = r'../reading_comprehension/results/result_rc_20200707-204721_threshold_0.5.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200707-204721_threshold_0.5.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200707-204721_threshold_0.5_restrict_span.json'
 
     gold_file = r'../data/dev.json'
 

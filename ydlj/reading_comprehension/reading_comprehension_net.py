@@ -628,7 +628,7 @@ class ReadingComprehensionModel:
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         self.train_op = tf.group([train_op, update_ops], name='train_op')
 
-    def episode_iter(self, data_set, episode_size=None, shuffle=True, max_input_len=None):
+    def episode_iter(self, data_set, episode_size=None, shuffle=True, max_input_len=None, keep_invalid=True):
         """Generate batch vec_data. """
         if shuffle:
             random.shuffle(data_set)
@@ -665,8 +665,10 @@ class ReadingComprehensionModel:
             q_type = np.zeros(cur_bsz, dtype=np.int32)
             is_support = np.zeros((cur_bsz, self.max_num_sentence), dtype=np.int32)
 
+            valid_sample_idx = []
             for sample_idx in range(len(cur_batch)):
                 case = cur_batch[sample_idx]
+                is_valid = True
 
                 context_idxs[sample_idx] = case.doc_input_ids
                 context_mask[sample_idx] = case.doc_input_mask
@@ -676,13 +678,22 @@ class ReadingComprehensionModel:
                     query_mapping[sample_idx, j] = 1
 
                 if case.ans_type == 0:
-                    if len(case.end_position) == 0:
+                    if len(case.start_position) == 0 or len(case.end_position) == 0:
                         y1[sample_idx] = y2[sample_idx] = 0
+                        # set to invalid if span is missing
+                        is_valid = False
                     elif case.end_position[0] < self.max_input_len:
                         y1[sample_idx] = case.start_position[0]
                         y2[sample_idx] = case.end_position[0]
+                    elif case.start_position[0] >= self.max_input_len:
+                        # change to 'unknown' in case answer span is out of range
+                        q_type[sample_idx] = 3
+                        y1[sample_idx] = IGNORE_INDEX
+                        y2[sample_idx] = IGNORE_INDEX
                     else:
                         y1[sample_idx] = y2[sample_idx] = 0
+                        # set to invalid if span is only partially kept
+                        is_valid = False
                     q_type[sample_idx] = 0
                 elif case.ans_type == 1:
                     y1[sample_idx] = IGNORE_INDEX
@@ -701,29 +712,41 @@ class ReadingComprehensionModel:
                     is_sp_flag = j in case.sup_fact_ids
                     start, end = sent_span
                     if start < end:
-                        is_support[sample_idx, j] = int(is_sp_flag)
+                        if q_type[sample_idx] != 3:
+                            # set support fact flag only for non-unknown types
+                            is_support[sample_idx, j] = int(is_sp_flag)
                         all_mapping[sample_idx, start:end + 1, j] = 1
                         start_mapping[sample_idx, j, start] = 1
 
-                ids.append(case.qas_id)
-                max_sent_cnt = max(max_sent_cnt, len(case.sent_spans))
+                if q_type[sample_idx] != 3 and np.sum(is_support[sample_idx]) == 0:
+                    # set to invalid if support fact is missing
+                    is_valid = False
 
-            input_lengths = np.sum(context_mask > 0, axis=1)
+                if is_valid or keep_invalid:
+                    ids.append(case.qas_id)
+                    max_sent_cnt = max(max_sent_cnt, len(case.sent_spans))
+                    valid_sample_idx.append(sample_idx)
+
+            if len(valid_sample_idx) == 0:
+                continue
+
+            valid_idx = np.array(valid_sample_idx)
+            input_lengths = np.sum(context_mask[valid_idx] > 0, axis=1)
             max_c_len = int(input_lengths.max())
 
             yield {
-                'context_idxs': context_idxs[:, :max_c_len],
-                'context_mask': context_mask[:, :max_c_len],
-                'segment_idxs': segment_idxs[:, :max_c_len],
-                'query_mapping': query_mapping[:, :max_c_len],
-                'y1': y1,
-                'y2': y2,
-                'ids': ids,
-                'q_type': q_type,
-                'start_mapping': start_mapping[:, :max_sent_cnt, :max_c_len],
-                'all_mapping': all_mapping[:, :max_c_len, :max_sent_cnt],
+                'context_idxs': context_idxs[valid_idx, :max_c_len],
+                'context_mask': context_mask[valid_idx, :max_c_len],
+                'segment_idxs': segment_idxs[valid_idx, :max_c_len],
+                'query_mapping': query_mapping[valid_idx, :max_c_len],
+                'y1': y1[valid_idx],
+                'y2': y2[valid_idx],
+                'ids': list(np.array(ids)[valid_idx]),
+                'q_type': q_type[valid_idx],
+                'start_mapping': start_mapping[valid_idx, :max_sent_cnt, :max_c_len],
+                'all_mapping': all_mapping[valid_idx, :max_c_len, :max_sent_cnt],
 
-                'is_support': is_support[:, :max_sent_cnt],
+                'is_support': is_support[valid_idx, :max_sent_cnt],
             }
 
     def fit(self, train_set, validation_set, epochs):
@@ -755,7 +778,7 @@ class ReadingComprehensionModel:
             threads = tf.train.start_queue_runners(sess=self.session, coord=coord)
 
             for epoch in range(1, epochs + 1):
-                for batch in self.episode_iter(train_set):
+                for batch in self.episode_iter(train_set, keep_invalid=False):
                     (span_start_pos, span_end_pos, span_start_prob, span_end_prob, answer_type_prob, support_fact_prob,
                      span_loss, answer_type_loss, support_fact_loss, reg_loss, loss, lr, _, global_step
                      ) = self.session.run(
