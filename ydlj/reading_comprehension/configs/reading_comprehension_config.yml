@@ -146,6 +146,25 @@ BiLSTM: {
 }
 
 ################################################################################
+# support fact reasoning layer
+
+# support fact reasoning model type
+# 'None': use sentence embedding directly
+# 'Transformer': Transformer (self-attention)
+support_fact_reasoning_model: 'Transformer'
+
+# transformer parameters for support fact reasoning model
+support_fact_transformer: {
+  hidden_size: 200,
+  num_hidden_layers: 2,
+  num_attention_heads: 10,
+  intermediate_size: 512,
+  hidden_act: 'gelu',
+  hidden_dropout_prob: 0.1,
+  attention_probs_dropout_prob: 0.1
+}
+
+################################################################################
 # loss function parameters
 
 # whether to use all samples to calculate span loss

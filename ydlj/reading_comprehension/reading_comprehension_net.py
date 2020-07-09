@@ -121,6 +121,9 @@ class ReadingComprehensionModel:
             self.lstm_num_layer = BiLSTM_Config.get('num_layer', 1)
             self.lstm_attention_enable = BiLSTM_Config.get('attention_enable', True)
 
+        self.support_fact_reasoning_model = config.get('support_fact_reasoning_model', 'None')
+        self.support_fact_transformer = config.get('support_fact_transformer', {})
+
         self.span_loss_all_samples = config.get('span_loss_all_samples', False)
         self.span_loss_weight = config.get('span_loss_weight', 1.0)
         self.answer_type_loss_weight = config.get('answer_type_loss_weight', 1.0)
@@ -437,14 +440,18 @@ class ReadingComprehensionModel:
         )
 
         # decrease the logits for padding and query tokens
-        contex_sentences_mask = tf.reduce_sum(self.input_sentence_mapping, axis=2, keepdims=True)
+        contex_sentences_mask = tf.reduce_sum(self.input_sentence_mapping, axis=2)
+
+        # for [CLS] token
+        first_token_mask = tf.cast(tf.range(sentence_len) < 1, tf.float32) + tf.zeros([batch_size, sentence_len])
 
         if self.span_loss_all_samples:
             # keep the position on first token
-            contex_sentences_mask = contex_sentences_mask + tf.expand_dims(
-                tf.cast(tf.range(sentence_len) < 1, tf.float32) + tf.zeros([batch_size, sentence_len]), 2)
+            span_contex_sentences_mask = contex_sentences_mask + first_token_mask
+        else:
+            span_contex_sentences_mask = contex_sentences_mask
 
-        span_logits = span_logits - 100 * (1 - contex_sentences_mask)
+        span_logits = span_logits - 100 * (1 - tf.expand_dims(span_contex_sentences_mask, axis=2))
 
         # batch_size x max_sentence_length x max_sentence_length
         span_logit_sum = tf.expand_dims(span_logits[:, :, 0], axis=2) + tf.expand_dims(span_logits[:, :, 1], axis=1)
@@ -491,19 +498,32 @@ class ReadingComprehensionModel:
                                                     logits=answer_type_logits),
             name='answer_type_loss')
 
-        # batch_size x max_sentence_length x num_sentence x hidden_size
-        sentence_token_embedding = tf.matmul(
-            tf.expand_dims(tf.cast(self.input_sentence_mapping, tf.float32), 3),
-            tf.expand_dims(token_embedding, 2))
+        # query sentence length, including [CLS] token, excluding 2 [SEP] tokens
+        query_sentence_length = tf.cast(tf.reduce_sum(self.input_mask - contex_sentences_mask, axis=1, keepdims=True),
+                                        tf.int32) - 2
+        query_mask = tf.cast(tf.expand_dims(tf.range(sentence_len), axis=0) < query_sentence_length, tf.float32)
+        query_mask = query_mask - first_token_mask
+
+        # sentence-token mapping including query and context sentences
+        # batch_size x max_sentence_length x (1+num_sentence)
+        all_sentence_mapping = tf.concat([tf.expand_dims(query_mask, axis=2),
+                                          tf.cast(self.input_sentence_mapping, tf.float32)],
+                                         axis=2)
+
+        # batch_size x max_sentence_length x (1+num_sentence) x hidden_size
+        sentence_token_embedding = tf.matmul(tf.expand_dims(all_sentence_mapping, 3),
+                                             tf.expand_dims(token_embedding, 2))
 
         if self.sentence_embedding_type != 'MaxPoolDense':
-            # reshape to: (batch_size*num_sentence) x max_sentence_length x hidden_size
+            # reshape to: (batch_size*(1+num_sentence)) x max_sentence_length x hidden_size
             sentence_token_embedding = tf.reshape(tf.transpose(sentence_token_embedding, perm=[0, 2, 1, 3]),
                                                   (-1, sentence_len, self.word_embed_size))
-            sentence_mask = tf.reshape(tf.transpose(self.input_sentence_mapping, perm=[0, 2, 1]), (-1, sentence_len))
+            sentence_mask = tf.reshape(tf.transpose(all_sentence_mapping, perm=[0, 2, 1]), (-1, sentence_len))
         else:
             # 'MaxPoolDense' can process 4-D input
-            sentence_mask = self.input_sentence_mapping
+            sentence_mask = all_sentence_mapping
+
+        # batch_size x (1+num_sentence) x sentence_embed_size
         sentence_embedding = self.sentence_embedding_model(sentence_token_embedding, sentence_mask,
                                                            embedding_type=self.sentence_embedding_type,
                                                            embedding_size=self.sentence_embed_size,
@@ -511,13 +531,43 @@ class ReadingComprehensionModel:
         if self.sentence_embedding_type != 'MaxPoolDense':
             sentence_embedding = tf.reshape(sentence_embedding, (batch_size, -1, self.sentence_embed_size))
 
+        if self.support_fact_reasoning_model == 'Transformer':
+            with tf.variable_scope("support_fact_model", reuse=tf.AUTO_REUSE):
+                # batch_size x (1+num_sentence)
+                all_sentences = tf.reduce_any(all_sentence_mapping > 0, axis=1)
+                # batch_size x (1+num_sentence) x (1+num_sentence)
+                sentence_attention_mask = tf.logical_and(tf.expand_dims(all_sentences, axis=2),
+                                                         tf.expand_dims(all_sentences, axis=1))
+
+                support_fact_embedding = bert_modeling.transformer_model(
+                    sentence_embedding,
+                    is_training=self.is_training,
+                    attention_mask=sentence_attention_mask,
+                    hidden_size=self.sentence_embed_size,
+                    num_hidden_layers=self.support_fact_transformer['num_hidden_layers'],
+                    num_attention_heads=self.support_fact_transformer['num_attention_heads'],
+                    intermediate_size=self.support_fact_transformer['intermediate_size'],
+                    intermediate_act_fn=bert_modeling.get_activation(self.support_fact_transformer['hidden_act']),
+                    hidden_dropout_prob=self.support_fact_transformer['hidden_dropout_prob'],
+                    attention_probs_dropout_prob=self.support_fact_transformer['attention_probs_dropout_prob'],
+                    initializer_range=0.02,
+                    do_return_all_layers=False
+                )
+
+                support_fact_embedding = support_fact_embedding
+        else:
+            # 'None'
+            support_fact_embedding = sentence_embedding
+
+        # exclude query sentence for support fact logit calculation
         support_fact_logits = tf.layers.dense(
-            sentence_embedding,
+            support_fact_embedding[:, 1:, :],
             1,
             activation=None,
             kernel_initializer=tf.truncated_normal_initializer(mean=0, stddev=0.02)
         )
 
+        # batch_size x num_sentence
         support_fact_logits = tf.squeeze(support_fact_logits, axis=2)
 
         # Mask the real sentences. For non sentence position, the cross-entropy will be 0.
@@ -675,6 +725,7 @@ class ReadingComprehensionModel:
                 segment_idxs[sample_idx] = case.doc_segment_ids
 
                 for j in range(case.sent_spans[0][0] - 1):
+                    # including [CLS], excluding [SEP]
                     query_mapping[sample_idx, j] = 1
 
                 if case.ans_type == 0:
