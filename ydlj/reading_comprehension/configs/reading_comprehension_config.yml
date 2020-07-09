@@ -88,20 +88,14 @@ BERT: {
 ################################################################################
 # sentence embedding parameters
 
-# answer type embedding size
-answer_type_embed_size: 200
-
-# answer type embedding model selection
-# 'CNN': CNN model
-# 'BiLSTM': BiLSTM model, with attention mechanism
-# 'FirstPoolDense': Using the fist token and a dense layer, same as BERT pooling. Should only be used with BERT model.
-# 'MaxPoolDense': max pooling and full connect layer
-answer_type_embedding_type: 'MaxPoolDense'
-
 # sentence embedding size
 sentence_embed_size: 200
 
 # sentence embedding model selection
+# 'CNN': CNN model
+# 'BiLSTM': BiLSTM model, with attention mechanism
+# 'FirstPoolDense': Using the fist token and a dense layer, same as BERT pooling. Should only be used with BERT model.
+# 'MaxPoolDense': max pooling and full connect layer
 sentence_embedding_type: 'MaxPoolDense'
 
 # dropout rate
@@ -163,6 +157,24 @@ support_fact_transformer: {
   hidden_dropout_prob: 0.1,
   attention_probs_dropout_prob: 0.1
 }
+
+################################################################################
+# answer type and span predition layer
+
+# combine sentence embedding (output from support fact reasoning layer) for answer type and span predition layer
+# if false, only use token embedding.
+answer_pred_use_support_fact_embedding: true
+
+# answer type embedding size
+answer_type_embed_size: 200
+
+# answer type embedding model selection
+# 'CNN': CNN model
+# 'BiLSTM': BiLSTM model, with attention mechanism
+# 'FirstPoolDense': Using the fist token and a dense layer, same as BERT pooling. Should only be used with BERT model.
+# 'MaxPoolDense': max pooling and full connect layer
+answer_type_embedding_type: 'MaxPoolDense'
+
 
 ################################################################################
 # loss function parameters
