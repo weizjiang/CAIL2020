@@ -104,6 +104,8 @@ class ReadingComprehensionModel:
         self.answer_type_embed_size = config.get('answer_type_embed_size', 200)
         self.answer_type_use_query_embedding_only = config.get('answer_type_use_query_embedding_only', False)
         self.answer_pred_use_support_fact_embedding = config.get('answer_pred_use_support_fact_embedding', False)
+        self.answer_span_predict_model = config.get('answer_span_predict_model', 'None')
+        self.answer_span_transformer = config.get('answer_span_transformer', {})
 
         self.sentence_embedding_type = config.get('sentence_embedding_type', 'MaxPoolDense')
         self.sentence_embed_size = config.get('sentence_embed_size', 200)
@@ -544,8 +546,33 @@ class ReadingComprehensionModel:
         else:
             token_embedding_ext = token_embedding
 
+        if self.answer_span_predict_model == 'Transformer':
+            with tf.variable_scope("answer_span_model", reuse=tf.AUTO_REUSE):
+                # batch_size x max_sentence_length x max_sentence_length
+                token_attention_mask = tf.logical_and(tf.expand_dims(self.input_mask > 0, axis=2),
+                                                      tf.expand_dims(self.input_mask > 0, axis=1))
+
+                span_embedding = bert_modeling.transformer_model(
+                    token_embedding_ext,
+                    is_training=self.is_training,
+                    attention_mask=token_attention_mask,
+                    hidden_size=self.answer_span_transformer['hidden_size'],
+                    num_hidden_layers=self.answer_span_transformer['num_hidden_layers'],
+                    num_attention_heads=self.answer_span_transformer['num_attention_heads'],
+                    intermediate_size=self.answer_span_transformer['intermediate_size'],
+                    intermediate_act_fn=bert_modeling.get_activation(self.answer_span_transformer['hidden_act']),
+                    hidden_dropout_prob=self.answer_span_transformer['hidden_dropout_prob'],
+                    attention_probs_dropout_prob=self.answer_span_transformer['attention_probs_dropout_prob'],
+                    initializer_range=0.02,
+                    do_return_all_layers=False
+                )
+
+        else:
+            # 'None'
+            span_embedding = token_embedding_ext
+
         span_logits = tf.layers.dense(
-            token_embedding_ext,
+            span_embedding,
             2,
             activation=None,
             kernel_initializer=tf.truncated_normal_initializer(mean=0, stddev=0.02)
@@ -640,7 +667,8 @@ class ReadingComprehensionModel:
         # bert_params = sum([np.prod(v.shape) for v in tf.trainable_variables() if v.name.startswith('bert')])
         # lstm_params = sum([np.prod(v.shape) for v in tf.trainable_variables() if v.name.startswith('BiLSTM')])
         num_params = sum([np.prod(v.shape) for v in tf.trainable_variables()])
-        print('total number of parameters: %d' % num_params)
+        num_trainable_params = sum([np.prod(v.shape) for v in self.get_trainable_variables()])
+        print('total number of parameters: %d (%d trainable)' % (num_params, num_trainable_params))
 
     def get_trainable_variables(self):
         tvars = tf.trainable_variables()
