@@ -89,7 +89,7 @@ def check_in_full_paras(answer, paras):
     return answer in full_doc
 
 
-def read_examples( full_file):
+def read_examples(full_file, is_labeled=True):
 
     with open(full_file, 'r', encoding='utf-8') as reader:
         full_data = json.load(reader)    
@@ -105,9 +105,14 @@ def read_examples( full_file):
     for case in tqdm(full_data):   
         key = case['_id']
         qas_type = "" # case['type']
-        sup_facts = set([(sp[0], sp[1]) for sp in case['supporting_facts']])   
-        sup_titles = set([sp[0] for sp in case['supporting_facts']]) 
-        orig_answer_text = case['answer']
+        if is_labeled:
+            sup_facts = set([(sp[0], sp[1]) for sp in case['supporting_facts']])
+            sup_titles = set([sp[0] for sp in case['supporting_facts']])
+            orig_answer_text = case['answer']
+        else:
+            sup_facts = set()
+            sup_titles = set()
+            orig_answer_text = ''
 
         sent_id = 0
         doc_tokens = []

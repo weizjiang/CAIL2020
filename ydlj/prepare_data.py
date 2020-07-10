@@ -189,6 +189,20 @@ def separate_sentence(text, separators=None, non_starting_chars=None):
     return sentences, sentence_spans
 
 
+def generate_test_tile():
+    data_file = r'data/dev.json'
+    with open(data_file, 'r', encoding='utf-8') as f_in:
+        data = json.load(f_in)
+
+    for item in data:
+        item.pop("answer")
+        item.pop("supporting_facts")
+
+    test_file = "./input/data.json"
+    with open(test_file, 'w', encoding='utf-8') as f_out:
+        json.dump(data, f_out, ensure_ascii=False, indent=4)
+
+
 def analyze_data():
     # data_file = r'data/train.json'
     # data_file = r'data/dev.json'
@@ -234,4 +248,6 @@ if __name__ == '__main__':
 
     # convert_cail2019_data()
 
-    analyze_data()
+    generate_test_tile()
+
+    # analyze_data()
