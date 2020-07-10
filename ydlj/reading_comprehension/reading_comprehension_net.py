@@ -102,6 +102,7 @@ class ReadingComprehensionModel:
 
         self.answer_type_embedding_type = config.get('answer_type_embedding_type', 'FirstPoolDense')
         self.answer_type_embed_size = config.get('answer_type_embed_size', 200)
+        self.answer_type_use_query_embedding_only = config.get('answer_type_use_query_embedding_only', False)
         self.answer_pred_use_support_fact_embedding = config.get('answer_pred_use_support_fact_embedding', False)
 
         self.sentence_embedding_type = config.get('sentence_embedding_type', 'MaxPoolDense')
@@ -585,10 +586,14 @@ class ReadingComprehensionModel:
                                 lambda: tf.reduce_mean(tf.gather(span_ce, span_answer_samples)))
             self.span_loss = tf.identity(span_loss, name='span_loss')
 
-        answer_type_embedding = self.sentence_embedding_model(token_embedding_ext, self.input_mask,
-                                                              embedding_type=self.answer_type_embedding_type,
-                                                              embedding_size=self.answer_type_embed_size,
-                                                              name='answer_type')
+        if self.answer_type_use_query_embedding_only:
+            # use the query sentence embedding output of support fact reasoning layer
+            answer_type_embedding = support_fact_embedding[:, 0, :]
+        else:
+            answer_type_embedding = self.sentence_embedding_model(token_embedding_ext, self.input_mask,
+                                                                  embedding_type=self.answer_type_embedding_type,
+                                                                  embedding_size=self.answer_type_embed_size,
+                                                                  name='answer_type')
         answer_type_logits = tf.layers.dense(
             answer_type_embedding,
             self.num_answer_type,
@@ -1314,13 +1319,14 @@ class ReadingComprehensionModel:
             restrict_answer_span = self.restrict_answer_span
 
         if result_file is None:
+            restrict_str = '_restrict_span' if restrict_answer_span else ''
             m = re.search(r'[\\/](rc_[\d-]*)[\\/]', self.LoadedModel)
             if m:
                 model_name = m.group(1)
-                result_file = 'results/result_{}_threshold_{}.json'.format(
-                    model_name, support_fact_threshold)
+                result_file = 'results/result_{}_threshold_{}{}.json'.format(
+                    model_name, support_fact_threshold, restrict_str)
             else:
-                result_file = 'results/result_threshold_{}.json'.format(support_fact_threshold)
+                result_file = 'results/result_threshold_{}{}.json'.format(support_fact_threshold, restrict_str)
 
         example_dict = {e.qas_id: e for e in examples}
         feature_dict = {f.qas_id: f for f in features}

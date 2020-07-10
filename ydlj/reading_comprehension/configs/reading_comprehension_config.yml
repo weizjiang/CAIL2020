@@ -161,14 +161,21 @@ support_fact_transformer: {
 ################################################################################
 # answer type and span predition layer
 
-# combine sentence embedding (output from support fact reasoning layer) for answer type and span predition layer
+# whether to combine sentence embedding (output from support fact reasoning layer if applicable) for answer span
+# (and answer type) predition layer.
 # if false, only use token embedding.
 answer_pred_use_support_fact_embedding: true
 
+# whether to use query sentence embedding (output from support fact reasoning layer if applicable) only
+# if false, passing all token embeeding into a sentence embedding layer to get the type embedding
+answer_type_use_query_embedding_only: true
+
 # answer type embedding size
+# only applied when answer_type_use_query_embedding_only is false
 answer_type_embed_size: 200
 
 # answer type embedding model selection
+# only applied when answer_type_use_query_embedding_only is false
 # 'CNN': CNN model
 # 'BiLSTM': BiLSTM model, with attention mechanism
 # 'FirstPoolDense': Using the fist token and a dense layer, same as BERT pooling. Should only be used with BERT model.
