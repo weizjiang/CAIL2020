@@ -96,6 +96,8 @@ sentence_embed_size: 256
 # 'BiLSTM': BiLSTM model, with attention mechanism
 # 'FirstPoolDense': Using the fist token and a dense layer, same as BERT pooling. Should only be used with BERT model.
 # 'MaxPoolDense': max pooling and full connect layer
+# 'AvgPoolDense': average pooling and full connect layer
+# 'AvgMaxPoolDense': concatenate average pooling and max pooling, followed by a full connect layer
 sentence_embedding_type: 'MaxPoolDense'
 
 # dropout rate
@@ -198,6 +200,8 @@ answer_type_embed_size: 256
 # 'BiLSTM': BiLSTM model, with attention mechanism
 # 'FirstPoolDense': Using the fist token and a dense layer, same as BERT pooling. Should only be used with BERT model.
 # 'MaxPoolDense': max pooling and full connect layer
+# 'AvgPoolDense': average pooling and full connect layer
+# 'AvgMaxPoolDense': concatenate average pooling and max pooling, followed by a full connect layer
 answer_type_embedding_type: 'MaxPoolDense'
 
 

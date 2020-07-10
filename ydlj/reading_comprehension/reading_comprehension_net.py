@@ -356,23 +356,28 @@ class ReadingComprehensionModel:
                     elif self.CCNN_FcActivation.lower() != 'none':
                         raise ValueError("Unsupported activation: %s" % self.CCNN_FcActivation)
 
-        elif embedding_type == 'MaxPoolDense':
-            with tf.variable_scope("MaxPoolDense" + name_appendix, reuse=tf.AUTO_REUSE):
-                pool_out = tf.reduce_max(token_embedding - 100 * tf.expand_dims(1 - sentence_mask, -1),
-                                         axis=1, keepdims=False, name="max_pool")
-                fc_in = tf.layers.dropout(pool_out, rate=self.dropout_rate, training=self.is_training)
-                fc_out = tf.layers.dense(
-                    fc_in,
-                    embedding_size,
-                    activation=tf.tanh,
-                    kernel_initializer=tf.truncated_normal_initializer(mean=0, stddev=0.02))
+        elif embedding_type.endswith('PoolDense'):
+            with tf.variable_scope("PoolDense" + name_appendix, reuse=tf.AUTO_REUSE):
+                if embedding_type == 'MaxPoolDense':
+                    pool_out = tf.reduce_max(token_embedding - 100 * tf.expand_dims(1 - sentence_mask, -1),
+                                             axis=1, keepdims=False)
+                elif embedding_type == 'AvgPoolDense':
+                    pool_out = tf.reduce_mean(token_embedding - 100 * tf.expand_dims(1 - sentence_mask, -1),
+                                              axis=1, keepdims=False)
+                elif embedding_type == 'AvgMaxPoolDense':
+                    pool_out = tf.concat([tf.reduce_mean(token_embedding - 100 * tf.expand_dims(1 - sentence_mask, -1),
+                                                         axis=1, keepdims=False),
+                                          tf.reduce_max(token_embedding - 100 * tf.expand_dims(1 - sentence_mask, -1),
+                                                        axis=1, keepdims=False)],
+                                         axis=-1)
+                elif embedding_type == 'FirstPoolDense':
+                    # use the embedding of the first token only
+                    # same as BERT model processing for classification, in which the first token is [cls].
+                    pool_out = token_embedding[:, 0]
+                else:
+                    raise NotImplementedError
 
-        elif embedding_type == 'FirstPoolDense':
-            with tf.variable_scope("FirstPoolDense" + name_appendix, reuse=tf.AUTO_REUSE):
-                # use the embedding of the first token only, and pass it to a dense layer
-                # same as BERT model processing for classification, in which the first token is [cls].
-                first_token_tensor = tf.squeeze(token_embedding[:, 0:1, :], axis=1)
-                fc_in = tf.layers.dropout(first_token_tensor, rate=self.dropout_rate, training=self.is_training)
+                fc_in = tf.layers.dropout(pool_out, rate=self.dropout_rate, training=self.is_training)
                 fc_out = tf.layers.dense(
                     fc_in,
                     embedding_size,
@@ -462,13 +467,13 @@ class ReadingComprehensionModel:
         sentence_token_embedding = tf.matmul(tf.expand_dims(all_sentence_mapping, 3),
                                              tf.expand_dims(token_embedding, 2))
 
-        if self.sentence_embedding_type != 'MaxPoolDense':
+        if not self.sentence_embedding_type.endswith('PoolDense'):
             # reshape to: (batch_size*(1+num_sentence)) x max_sentence_length x hidden_size
             sentence_token_embedding = tf.reshape(tf.transpose(sentence_token_embedding, perm=[0, 2, 1, 3]),
                                                   (-1, sentence_len, self.word_embed_size))
             sentence_mask = tf.reshape(tf.transpose(all_sentence_mapping, perm=[0, 2, 1]), (-1, sentence_len))
         else:
-            # 'MaxPoolDense' can process 4-D input
+            # 'PoolDense' can process 4-D input
             sentence_mask = all_sentence_mapping
 
         # batch_size x (1+num_sentence) x sentence_embed_size
@@ -476,7 +481,7 @@ class ReadingComprehensionModel:
                                                            embedding_type=self.sentence_embedding_type,
                                                            embedding_size=self.sentence_embed_size,
                                                            name='support_fact_sentence')
-        if self.sentence_embedding_type != 'MaxPoolDense':
+        if not self.sentence_embedding_type.endswith('PoolDense'):
             sentence_embedding = tf.reshape(sentence_embedding, (batch_size, -1, self.sentence_embed_size))
 
         # --------------------------------------------------------------------------------------------------------------
