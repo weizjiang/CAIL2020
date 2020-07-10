@@ -187,7 +187,8 @@ answer_span_transformer: {
 }
 
 # whether to use query sentence embedding (output from support fact reasoning layer if applicable) only
-# if false, passing all token embeeding into a sentence embedding layer to get the type embedding
+# if false, passing all token embeeding (output from answer span predict model) into a sentence embedding layer to get
+# the type embedding.
 answer_type_use_query_embedding_only: true
 
 # answer type embedding size

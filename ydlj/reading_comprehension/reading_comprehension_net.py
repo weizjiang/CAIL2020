@@ -622,7 +622,7 @@ class ReadingComprehensionModel:
             # use the query sentence embedding output of support fact reasoning layer
             answer_type_embedding = support_fact_embedding[:, 0, :]
         else:
-            answer_type_embedding = self.sentence_embedding_model(token_embedding_ext, self.input_mask,
+            answer_type_embedding = self.sentence_embedding_model(span_embedding, self.input_mask,
                                                                   embedding_type=self.answer_type_embedding_type,
                                                                   embedding_size=self.answer_type_embed_size,
                                                                   name='answer_type')
