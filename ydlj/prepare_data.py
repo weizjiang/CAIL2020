@@ -46,20 +46,31 @@ def generate_dev_result():
         json.dump(dev_result, f_out, ensure_ascii=False, indent=4)
 
 
-def convert_cail2019_data(separate_paragraph=False):
-
-    input_file = r'C:\Works\DataSet\CAIL\CAIL2019\big_train_data.json'
-    output_file = r'data\train_2019.json'
-    if separate_paragraph:
-        converted_file = r'data\train_2019_converted.json'
-    else:
-        converted_file = r'data\train_2019_1sentence_converted.json'
-
-    # input_file = r'C:\Works\DataSet\CAIL\CAIL2019\dev_ground_truth.json'
-    # output_file = r'data\dev_2019.json'
-
-    # input_file = r'C:\Works\DataSet\CAIL\CAIL2019\test_ground_truth.json'
-    # output_file = r'data\test_2019.json'
+def convert_cail2019_data(dataset='train', separate_paragraph=False):
+    if dataset == 'train':
+        input_file = r'C:\Works\DataSet\CAIL\CAIL2019\big_train_data.json'
+        output_file = r'data\train_2019.json'
+        if separate_paragraph:
+            converted_file = r'data\train_2019_converted.json'
+        else:
+            converted_file = r'data\train_2019_1sentence_converted.json'
+        id_prefix = ''
+    elif dataset == 'dev':
+        input_file = r'C:\Works\DataSet\CAIL\CAIL2019\dev_ground_truth.json'
+        output_file = r'data\dev_2019.json'
+        if separate_paragraph:
+            converted_file = r'data\dev_2019_converted.json'
+        else:
+            converted_file = r'data\dev_2019_1sentence_converted.json'
+        id_prefix = 'cail2019_dev_'
+    elif dataset == 'test':
+        input_file = r'C:\Works\DataSet\CAIL\CAIL2019\test_ground_truth.json'
+        output_file = r'data\test_2019.json'
+        if separate_paragraph:
+            converted_file = r'data\test_2019_converted.json'
+        else:
+            converted_file = r'data\test_2019_1sentence_converted.json'
+        id_prefix = 'cail2019_test_'
 
     with open(input_file, 'r', encoding='utf-8') as f_in:
         data = json.load(f_in)
@@ -78,8 +89,27 @@ def convert_cail2019_data(separate_paragraph=False):
                     context = [paragraph['casename'], sentences if separate_paragraph else [context_text]]
                     supporting_facts = []
                 else:
-                    # only one answer in train set
-                    answer = qa['answers'][0]
+                    if len(qa['answers']) == 0:
+                        # only one answer in train set
+                        answer = qa['answers'][0]
+                    else:
+                        # three answers in dev/test set
+                        answer_list = [clean_text(answer_option['text']) for answer_option in qa['answers']]
+                        answer_set = set(answer_list)
+                        if len(answer_set) == 1:
+                            # all same
+                            answer = qa['answers'][0]
+                        elif len(answer_set) == len(answer_list):
+                            # use the shortest one if all different
+                            answer_len = [len(a) for a in answer_list]
+                            answer_idx = np.argmin(answer_len)
+                            answer = qa['answers'][answer_idx]
+                        else:
+                            # use the most voted one
+                            for answer_idx, answer_text in enumerate(answer_list):
+                                if answer_list.count(answer_text) > 1:
+                                    answer = qa['answers'][answer_idx]
+                                    break
 
                     if answer['answer_start'] == -1:
                         # 'YES'/'NO' answer
@@ -128,7 +158,7 @@ def convert_cail2019_data(separate_paragraph=False):
                             supporting_facts = [[paragraph['casename'], 0]]
 
                 qa_item = {
-                    '_id': qa['id'],
+                    '_id': id_prefix + qa['id'],
                     'context': [context],
                     'question': qa['question'],
                     'answer': answer_text,
@@ -189,7 +219,7 @@ def separate_sentence(text, separators=None, non_starting_chars=None):
     return sentences, sentence_spans
 
 
-def generate_test_tile():
+def generate_test_file():
     data_file = r'data/dev.json'
     with open(data_file, 'r', encoding='utf-8') as f_in:
         data = json.load(f_in)
@@ -241,13 +271,153 @@ def analyze_data():
     print('\nmax number of sentences: {}'.format(max(num_sentences)))
 
 
+def augment_data_single_hop(num_delete=3, num_shuffle=3):
+    """
+    do augmentation by deleting ans shuffling the sentences, generate new samples: num_delete x num_shuffle
+    the augmented data is saved as single sentence context format
+    :param num_delete:
+    :param num_shuffle:
+    :return:
+    """
+    in_file = r'data/all_2019_converted.json'
+    # in_file = r'data/dev_2019_converted.json'
+    out_file = r'data/all_2019_1sentence_converted_augmented.json'
+
+    with open(in_file, 'r', encoding='utf-8') as f_in:
+        data = json.load(f_in)
+
+    augmented_data = []
+    for qa in data:
+        context_sentences = qa["context"][0][1]
+        num_sentence = len(context_sentences)
+        support_fact_indices = [support_fact[1] for support_fact in qa["supporting_facts"]]
+
+        # add the original context, converting to single sentence
+        qa.update({
+            'context': [[qa["context"][0][0], ''.join(context_sentences)]],
+            'supporting_facts': [[qa["context"][0][0], 0]] if len(support_fact_indices) > 0 else []
+        })
+        augmented_data.append(qa)
+
+        if len(support_fact_indices) > 0:
+            # reserve some sentences ahead/behind
+            support_fact_start = max(min(support_fact_indices) - 2, 0)
+            support_fact_end = min(max(support_fact_indices) + 2, num_sentence-1)
+            non_support_facts = list(range(0, support_fact_start)) + list(range(support_fact_end+1, num_sentence))
+        else:
+            support_fact_start = None
+            support_fact_end = None
+            non_support_facts = list(range(0, num_sentence))
+
+        if len(non_support_facts) == 0:
+            continue
+
+        for del_idx in range(num_delete):
+            sent_list = non_support_facts.copy()
+            max_num_del = max(1, int(len(sent_list) * 0.5))
+            num_del = np.random.randint(1, max_num_del + 1)
+            rand_positions = np.random.choice(len(sent_list), num_del, replace=False)
+            indices = np.delete(sent_list, rand_positions)
+            if len(support_fact_indices) > 0:
+                # occupy a position for support facts
+                post_positions = np.flatnonzero(indices > support_fact_start)
+                indices = np.insert(indices, post_positions[0] if len(post_positions) > 0 else len(indices), -1)
+            for shuffle_idx in range(num_shuffle):
+                max_num_shift = max(1, int(len(indices) * 0.5))
+                num_shift = np.random.randint(1, max_num_shift + 1)
+                rand_positions = np.random.choice(len(indices), num_shift, replace=False)
+                permutate_pos = np.random.permutation(rand_positions)
+                indices[rand_positions] = indices[permutate_pos]
+
+                # combine the sentences
+                sentence_list = []
+                for idx in indices:
+                    if idx == -1:
+                        sentence_list += context_sentences[support_fact_start:support_fact_end]
+                    else:
+                        sentence_list.append(context_sentences[idx])
+
+                augmented_qa = qa.copy()
+                augmented_qa.update({
+                    '_id': '%s_%d_%d' % (qa['_id'], del_idx, shuffle_idx),
+                    'context': [[qa["context"][0][0], ''.join(sentence_list)]],
+                    'supporting_facts': [[qa["context"][0][0], 0]] if len(support_fact_indices) > 0 else []
+                })
+                augmented_data.append(augmented_qa)
+
+    with open(out_file, 'w', encoding='utf-8') as f_out:
+        json.dump(augmented_data, f_out, ensure_ascii=False, indent=4)
+
+
+def augment_data_multi_hop(num_delete=10, num_shuffle=10):
+    """
+    do augmentation by deleting ans shuffling the sentences, generate new samples: num_delete x num_shuffle
+    :param num_delete:
+    :param num_shuffle:
+    :return:
+    """
+    in_file = r'data/train.json'
+    out_file = r'data/train_augmented.json'
+
+    with open(in_file, 'r', encoding='utf-8') as f_in:
+        data = json.load(f_in)
+
+    augmented_data = []
+    for qa in data:
+        context_sentences = qa["context"][0][1]
+        num_sentence = len(context_sentences)
+        support_fact_indices = [support_fact[1] for support_fact in qa["supporting_facts"]]
+
+        # add the original context
+        augmented_data.append(qa)
+
+        non_support_facts = [idx for idx in range(num_sentence) if idx not in support_fact_indices]
+
+        if len(non_support_facts) == 0:
+            continue
+
+        for del_idx in range(num_delete):
+            sent_list = list(range(num_sentence))
+            max_num_del = max(1, int(len(non_support_facts) * 0.5))
+            num_del = np.random.randint(1, max_num_del + 1)
+            rand_positions = np.random.choice(non_support_facts, num_del, replace=False)
+            indices = np.delete(sent_list, rand_positions)
+            for shuffle_idx in range(num_shuffle):
+                sub_indices = np.array([i for i, idx in enumerate(indices) if idx not in support_fact_indices])
+                max_num_shift = max(1, int(len(sub_indices) * 0.5))
+                num_shift = np.random.randint(1, max_num_shift + 1)
+                rand_positions = np.random.choice(sub_indices, num_shift, replace=False)
+                permutate_pos = np.random.permutation(rand_positions)
+                indices[rand_positions] = indices[permutate_pos]
+
+                # combine the sentences
+                sentence_list = [context_sentences[idx] for idx in indices]
+
+                new_support_fact_indices = [np.flatnonzero(indices == idx)[0] for idx in support_fact_indices]
+
+                augmented_qa = qa.copy()
+                augmented_qa.update({
+                    '_id': '%s_%d_%d' % (qa['_id'], del_idx, shuffle_idx),
+                    'context': [[qa["context"][0][0], sentence_list]],
+                    'supporting_facts': [[qa["context"][0][0], int(idx)] for idx in new_support_fact_indices]
+                })
+                augmented_data.append(augmented_qa)
+
+    with open(out_file, 'w', encoding='utf-8') as f_out:
+        json.dump(augmented_data, f_out, ensure_ascii=False, indent=4)
+
+
 if __name__ == '__main__':
     # separate_dev_set()
 
     # generate_dev_result()
 
-    # convert_cail2019_data()
+    # convert_cail2019_data(dataset='test', separate_paragraph=True)
 
-    generate_test_tile()
+    # augment_data_single_hop()
+
+    augment_data_multi_hop()
+
+    # generate_test_file()
 
     # analyze_data()

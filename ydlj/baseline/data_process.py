@@ -217,8 +217,8 @@ def read_examples( full_file):
             print("ans_start_position {}".format(ans_start_position))
             print("ans_end_position {}".format(ans_end_position))
 
-        # print context and questions
-        print('{}: {}|{}$'.format(key, case['question'], ''.join(case['context'][0][1])))
+        # # print context and questions
+        # print('{}: {}|{}$'.format(key, case['question'], ''.join(case['context'][0][1])))
        
         example = Example(
             qas_id=key,
