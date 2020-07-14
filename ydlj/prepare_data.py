@@ -123,33 +123,38 @@ def convert_cail2019_data(dataset='train', separate_paragraph=False):
 
                         # due to cleaning, need to re-find the answer text pos
                         # it should be close to the original position
-                        answer_start = -1
+                        # --> find all occurance as support fact
+                        answer_positions = []
                         while True:
-                            if answer_start == -1:
-                                search_start = 0
+                            if len(answer_positions) > 0:
+                                search_start = answer_positions[-1] + len(answer_text)
                             else:
-                                search_start = answer_start + len(answer_text)
-                            search_end = min(answer['answer_start'] + len(answer_text), len(context_text))
-                            find_pos = context_text[search_start:search_end].find(answer_text)
+                                search_start = 0
+                            # search_end = min(answer['answer_start'] + len(answer_text), len(context_text))
+                            # find_pos = context_text[search_start:search_end].find(answer_text)
+                            # --> search whole context since the original 'answer_start' is only the first occurance
+                            find_pos = context_text[search_start:].find(answer_text)
                             if find_pos >= 0:
                                 answer_start = search_start + find_pos
+                                answer_positions.append(answer_start)
                             else:
                                 break
-                        assert (answer_start >= 0)
+                        assert len(answer_positions) > 0
 
                         if separate_paragraph:
-                            sentence_idx = np.flatnonzero(
-                                np.logical_and(sentence_spans[:, 1] > answer_start,
-                                               sentence_spans[:, 0] < answer_start + len(answer_text))
-                            )
-                            if len(sentence_idx) == 1:
-                                # only use one sentence as the supporting fact, may be incomplete!
-                                context = [paragraph['casename'], sentences]
-                                supporting_facts = [[paragraph['casename'], int(sentence_idx[0])]]
-                            elif len(sentence_idx) > 1:
+                            support_fact_indices = set()
+                            for answer_start in answer_positions:
                                 # allow an answer span multiple sentences?
+                                sentence_idx = np.flatnonzero(
+                                    np.logical_and(sentence_spans[:, 1] > answer_start,
+                                                   sentence_spans[:, 0] < answer_start + len(answer_text))
+                                )
+                                support_fact_indices = support_fact_indices.union(set(sentence_idx))
+
+                            if len(support_fact_indices) > 0:
+                                # only use sentences that answer span appears, it's inaccurate!
                                 context = [paragraph['casename'], sentences]
-                                supporting_facts = [[paragraph['casename'], int(idx)] for idx in sentence_idx]
+                                supporting_facts = [[paragraph['casename'], int(idx)] for idx in support_fact_indices]
                             else:
                                 context = [paragraph['casename'], [context_text]]
                                 supporting_facts = [[paragraph['casename'], 0]]
@@ -282,7 +287,6 @@ def augment_data_single_hop(num_delete=3, num_shuffle=3):
     :return:
     """
     in_file = r'data/all_2019_converted.json'
-    # in_file = r'data/dev_2019_converted.json'
     out_file = r'data/all_2019_1sentence_converted_augmented.json'
 
     with open(in_file, 'r', encoding='utf-8') as f_in:
@@ -414,9 +418,9 @@ if __name__ == '__main__':
 
     # generate_dev_result()
 
-    convert_cail2019_data(dataset='test', separate_paragraph=True)
+    # convert_cail2019_data(dataset='train', separate_paragraph=True)
 
-    # augment_data_single_hop()
+    augment_data_single_hop()
 
     # augment_data_multi_hop()
 
