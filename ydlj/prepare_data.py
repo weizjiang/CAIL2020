@@ -121,23 +121,23 @@ def convert_cail2019_data(dataset='train', separate_paragraph=False):
                         # span answer
                         answer_text = clean_text(answer['text'])
 
-                        if separate_paragraph:
-                            # due to cleaning, need to re-find the answer text pos
-                            # it should be close to the original position
-                            answer_start = -1
-                            while True:
-                                if answer_start == -1:
-                                    search_start = 0
-                                else:
-                                    search_start = answer_start + len(answer_text)
-                                search_end = min(answer['answer_start'] + len(answer_text), len(context_text))
-                                find_pos = context_text[search_start:search_end].find(answer_text)
-                                if find_pos >= 0:
-                                    answer_start = search_start + find_pos
-                                else:
-                                    break
-                            assert(answer_start >= 0)
+                        # due to cleaning, need to re-find the answer text pos
+                        # it should be close to the original position
+                        answer_start = -1
+                        while True:
+                            if answer_start == -1:
+                                search_start = 0
+                            else:
+                                search_start = answer_start + len(answer_text)
+                            search_end = min(answer['answer_start'] + len(answer_text), len(context_text))
+                            find_pos = context_text[search_start:search_end].find(answer_text)
+                            if find_pos >= 0:
+                                answer_start = search_start + find_pos
+                            else:
+                                break
+                        assert (answer_start >= 0)
 
+                        if separate_paragraph:
                             sentence_idx = np.flatnonzero(
                                 np.logical_and(sentence_spans[:, 1] > answer_start,
                                                sentence_spans[:, 0] < answer_start + len(answer_text))
@@ -162,6 +162,8 @@ def convert_cail2019_data(dataset='train', separate_paragraph=False):
                     'context': [context],
                     'question': qa['question'],
                     'answer': answer_text,
+                    # 'answer_start' in cail2019 is always the first occurence in the context, not imformative
+                    # 'answer_start': answer_start,
                     'supporting_facts': supporting_facts
                 }
 
@@ -412,12 +414,16 @@ if __name__ == '__main__':
 
     # generate_dev_result()
 
-    # convert_cail2019_data(dataset='test', separate_paragraph=True)
+    convert_cail2019_data(dataset='test', separate_paragraph=True)
 
     # augment_data_single_hop()
 
-    augment_data_multi_hop()
+    # augment_data_multi_hop()
 
     # generate_test_file()
 
     # analyze_data()
+
+    # with open(r'data/data_combine2019all_1sentence_augmented/train.json', 'r', encoding='utf-8') as f_in:
+    #     data = json.load(f_in)
+    # print(len(data))

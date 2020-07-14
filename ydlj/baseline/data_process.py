@@ -182,7 +182,8 @@ def read_examples( full_file):
                         break
 
                 # answer_offsets = [m.start() for m in re.finditer(orig_answer_text, sent)]
-                if not JUDGE_FLAG and not FIND_FLAG and len(answer_offsets) > 0:
+                # only set answer start/end position when answer text in a support fact sentence
+                if not JUDGE_FLAG and not FIND_FLAG and len(answer_offsets) > 0 and local_sent_name in sup_facts:
                     FIND_FLAG = True   
                     for answer_offset in answer_offsets:
                         start_char_position = sent_start_char_id + answer_offset   
