@@ -89,7 +89,7 @@ def check_in_full_paras(answer, paras):
     return answer in full_doc
 
 
-def read_examples(full_file, is_labeled=True):
+def read_examples( full_file):
 
     with open(full_file, 'r', encoding='utf-8') as reader:
         full_data = json.load(reader)    
@@ -105,14 +105,10 @@ def read_examples(full_file, is_labeled=True):
     for case in tqdm(full_data):   
         key = case['_id']
         qas_type = "" # case['type']
-        if is_labeled:
-            sup_facts = set([(sp[0], sp[1]) for sp in case['supporting_facts']])
-            sup_titles = set([sp[0] for sp in case['supporting_facts']])
-            orig_answer_text = case['answer']
-        else:
-            sup_facts = set()
-            sup_titles = set()
-            orig_answer_text = ''
+        supporting_facts = case.get('supporting_facts', [])
+        sup_facts = set([(sp[0], sp[1]) for sp in supporting_facts])
+        sup_titles = set([sp[0] for sp in supporting_facts])
+        orig_answer_text = case.get('answer', '')
 
         sent_id = 0
         doc_tokens = []
@@ -186,7 +182,8 @@ def read_examples(full_file, is_labeled=True):
                         break
 
                 # answer_offsets = [m.start() for m in re.finditer(orig_answer_text, sent)]
-                if not JUDGE_FLAG and not FIND_FLAG and len(answer_offsets) > 0:
+                # only set answer start/end position when answer text in a support fact sentence
+                if not JUDGE_FLAG and not FIND_FLAG and len(answer_offsets) > 0 and local_sent_name in sup_facts:
                     FIND_FLAG = True   
                     for answer_offset in answer_offsets:
                         start_char_position = sent_start_char_id + answer_offset   
@@ -207,7 +204,7 @@ def read_examples(full_file, is_labeled=True):
 
         if len(ans_end_position) > 1:
             cnt += 1    
-        if type(key) is int and key < 10:
+        if type(key) is int and key < 0:
             print("qid {}".format(key))
             print("qas type {}".format(qas_type))
             print("doc tokens {}".format(doc_tokens))
@@ -220,6 +217,9 @@ def read_examples(full_file, is_labeled=True):
             print("orig_answer_text {}".format(orig_answer_text))
             print("ans_start_position {}".format(ans_start_position))
             print("ans_end_position {}".format(ans_end_position))
+
+        # # print context and questions
+        # print('{}: {}|{}$'.format(key, case['question'], ''.join(case['context'][0][1])))
        
         example = Example(
             qas_id=key,
@@ -354,7 +354,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length, max_query_
         sup_fact_ids = [sent_id for sent_id in sup_fact_ids if sent_id < sent_num]
         if len(sup_fact_ids) != len(example.sup_fact_id):
             failed += 1
-        if type(example.qas_id) is int and example.qas_id < 10:
+        if type(example.qas_id) is int and example.qas_id < 0:
             print("qid {}".format(example.qas_id))
             print("all_doc_tokens {}".format(all_doc_tokens))
             print("doc_input_ids {}".format(doc_input_ids))
