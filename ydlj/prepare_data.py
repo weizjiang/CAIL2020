@@ -1,6 +1,7 @@
 """
 prepare data for training/testing
 """
+import os
 import json
 import random
 import re
@@ -89,7 +90,7 @@ def convert_cail2019_data(dataset='train', separate_paragraph=False):
                     context = [paragraph['casename'], sentences if separate_paragraph else [context_text]]
                     supporting_facts = []
                 else:
-                    if len(qa['answers']) == 0:
+                    if len(qa['answers']) == 1:
                         # only one answer in train set
                         answer = qa['answers'][0]
                     else:
@@ -226,6 +227,129 @@ def separate_sentence(text, separators=None, non_starting_chars=None):
     return sentences, sentence_spans
 
 
+def convert_cmrc2018_data(dataset='train', separate_paragraph=False):
+    id_prefix = 'CMRC2018_'
+    if dataset == 'train':
+        input_file = r'C:\Works\DataSet\CMRC2018\cmrc2018_train.json'
+        output_file = r'data\cmrc2018_train.json'
+        if separate_paragraph:
+            converted_file = r'data\cmrc2018_train_converted.json'
+        else:
+            converted_file = r'data\cmrc2018_train_1sentence_converted.json'
+    elif dataset == 'dev':
+        input_file = r'C:\Works\DataSet\CMRC2018\cmrc2018_dev.json'
+        output_file = r'data\cmrc2018_dev.json'
+        if separate_paragraph:
+            converted_file = r'data\cmrc2018_dev_converted.json'
+        else:
+            converted_file = r'data\cmrc2018_dev_1sentence_converted.json'
+    elif dataset == 'trial':
+        input_file = r'C:\Works\DataSet\CMRC2018\cmrc2018_trial.json'
+        output_file = r'data\cmrc2018_trial.json'
+        if separate_paragraph:
+            converted_file = r'data\cmrc2018_trial_converted.json'
+        else:
+            converted_file = r'data\cmrc2018_trial_1sentence_converted.json'
+
+    if os.path.isfile(output_file):
+        with open(output_file, 'r', encoding='utf-8') as f_in:
+            data = json.load(f_in)
+    else:
+        with open(input_file, 'r', encoding='utf-8') as f_in:
+            data = json.load(f_in)
+        with open(output_file, 'w', encoding='utf-8') as f_out:
+            json.dump(data, f_out, ensure_ascii=False, indent=4)
+
+    converted_data = []
+    for item in data:
+        context_text = item['context_text'].replace('\n', '')
+        for qa in item['qas']:
+            if len(qa['answers']) == 1:
+                # only one answer in train set
+                answer = str(qa['answers'][0])
+            else:
+                # three answers in dev set
+                answer_list = [str(a) for a in qa['answers']]
+                answer_set = set(answer_list)
+                if len(answer_set) == 1:
+                    # all same
+                    answer = answer_list[0]
+                elif len(answer_set) == len(answer_list):
+                    # use the shortest one if all different
+                    answer_len = [len(a) for a in answer_list]
+                    answer_idx = np.argmin(answer_len)
+                    answer = answer_list[answer_idx]
+                else:
+                    # use the most voted one
+                    for answer_idx, answer_text in enumerate(answer_list):
+                        if answer_list.count(answer_text) > 1:
+                            answer = answer_list[answer_idx]
+                            break
+
+            # span answer
+            answer_text = answer
+
+            while True:
+                # find all occurance as support fact
+                answer_positions = []
+                while True:
+                    if len(answer_positions) > 0:
+                        search_start = answer_positions[-1] + len(answer_text)
+                    else:
+                        search_start = 0
+                    # search whole context since the original 'answer_start' is only the first occurance
+                    find_pos = context_text[search_start:].find(answer_text)
+                    if find_pos >= 0:
+                        answer_start = search_start + find_pos
+                        answer_positions.append(answer_start)
+                    else:
+                        break
+
+                if len(answer_positions) == 0:
+                    # the original data may have probelm of answer mismatch
+                    if answer_text[-1] in ['，', '。', '；']:
+                        answer_text = answer_text[:-1]
+                else:
+                    break
+
+            assert len(answer_positions) > 0
+            assert len(answer_text) > 0
+
+            if separate_paragraph:
+                sentences, sentence_spans = separate_sentence(context_text)
+                support_fact_indices = set()
+                for answer_start in answer_positions:
+                    # allow an answer span multiple sentences?
+                    sentence_idx = np.flatnonzero(
+                        np.logical_and(sentence_spans[:, 1] > answer_start,
+                                       sentence_spans[:, 0] < answer_start + len(answer_text))
+                    )
+                    support_fact_indices = support_fact_indices.union(set(sentence_idx))
+
+                if len(support_fact_indices) > 0:
+                    # only use sentences that answer span appears, it's inaccurate!
+                    context = [item['title'], sentences]
+                    supporting_facts = [[item['title'], int(idx)] for idx in support_fact_indices]
+                else:
+                    context = [item['title'], [context_text]]
+                    supporting_facts = [[item['title'], 0]]
+            else:
+                context = [item['title'], [context_text]]
+                supporting_facts = [[item['title'], 0]]
+
+            qa_item = {
+                '_id': id_prefix + qa['query_id'],
+                'context': [context],
+                'question': qa['query_text'],
+                'answer': answer_text,
+                'supporting_facts': supporting_facts
+            }
+
+            converted_data.append(qa_item)
+
+    with open(converted_file, 'w', encoding='utf-8') as f_out:
+        json.dump(converted_data, f_out, ensure_ascii=False, indent=4)
+
 def generate_test_file():
     data_file = r'data/dev.json'
     with open(data_file, 'r', encoding='utf-8') as f_in:
@@ -286,8 +410,10 @@ def augment_data_single_hop(num_delete=3, num_shuffle=3):
     :param num_shuffle:
     :return:
     """
-    in_file = r'data/all_2019_converted.json'
-    out_file = r'data/all_2019_1sentence_converted_augmented.json'
+    # in_file = r'data/all_2019_converted.json'
+    # out_file = r'data/all_2019_1sentence_converted_augmented.json'
+    in_file = r'data/cmrc2018_all_converted.json'
+    out_file = r'data/cmrc2018_all_1sentence_converted_augmented.json'
 
     with open(in_file, 'r', encoding='utf-8') as f_in:
         data = json.load(f_in)
@@ -300,7 +426,7 @@ def augment_data_single_hop(num_delete=3, num_shuffle=3):
 
         # add the original context, converting to single sentence
         qa.update({
-            'context': [[qa["context"][0][0], ''.join(context_sentences)]],
+            'context': [[qa["context"][0][0], [''.join(context_sentences)]]],
             'supporting_facts': [[qa["context"][0][0], 0]] if len(support_fact_indices) > 0 else []
         })
         augmented_data.append(qa)
@@ -346,7 +472,7 @@ def augment_data_single_hop(num_delete=3, num_shuffle=3):
                 augmented_qa = qa.copy()
                 augmented_qa.update({
                     '_id': '%s_%d_%d' % (qa['_id'], del_idx, shuffle_idx),
-                    'context': [[qa["context"][0][0], ''.join(sentence_list)]],
+                    'context': [[qa["context"][0][0], [''.join(sentence_list)]]],
                     'supporting_facts': [[qa["context"][0][0], 0]] if len(support_fact_indices) > 0 else []
                 })
                 augmented_data.append(augmented_qa)
@@ -419,6 +545,8 @@ if __name__ == '__main__':
     # generate_dev_result()
 
     # convert_cail2019_data(dataset='train', separate_paragraph=True)
+
+    # convert_cmrc2018_data(dataset='dev', separate_paragraph=False)
 
     augment_data_single_hop()
 

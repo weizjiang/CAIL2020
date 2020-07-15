@@ -158,7 +158,8 @@ if __name__ == '__main__':
     # prediction_file = r'../reading_comprehension/results/result_rc_20200710-120216_threshold_0.2_restrict_span.json'
     # prediction_file = r'../reading_comprehension/results/result_rc_20200710-120452_threshold_0.2_restrict_span.json'
     # prediction_file = r'../reading_comprehension/results/result_rc_20200713-131312_threshold_0.2_restrict_span.json'
-    prediction_file = r'../reading_comprehension/results/result_rc_20200713-151448_threshold_0.2_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200713-151448_threshold_0.2_restrict_span.json'
+    prediction_file = r'../reading_comprehension/results/result_rc_20200714-202143_threshold_0.2_restrict_span.json'
 
     # prediction_file = r'../result/result_2.json'
 
