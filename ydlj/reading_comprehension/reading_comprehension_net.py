@@ -910,6 +910,10 @@ class ReadingComprehensionModel:
                         }
                     )
 
+                    if np.isnan(loss):
+                        print(batch)
+                        raise SystemError
+
                     if self.restrict_answer_span:
                         span_start_predicts, span_end_predicts = self.predict_answer_span(
                             batch['context_idxs'], span_start_prob, span_end_prob)
