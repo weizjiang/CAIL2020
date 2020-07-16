@@ -57,7 +57,7 @@ if __name__ == '__main__':
         dev_set_features = pickle.load(f)
 
     # # continue training
-    # RCModel.load_model(r'runs\qe_20200222-235523', 'L')
+    # RCModel.load_model(r'runs/rc_20200715-172519', 'L')
 
     RCModel.fit(train_set=train_set_features,
                 validation_set=dev_set_features,
