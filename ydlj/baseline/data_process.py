@@ -192,12 +192,12 @@ def read_examples( full_file):
                         ans_start_position.append(char_to_word_offset[start_char_position])
                         ans_end_position.append(char_to_word_offset[end_char_position])
 
-
-
-               
                 if len(doc_tokens) > 382:   
-                   
                     break
+
+            if not JUDGE_FLAG and not FIND_FLAG:
+                print('no answer found for case {}'.format(key))
+
             para_end_position = len(doc_tokens) - 1
             
             para_start_end_position.append((para_start_position, para_end_position, title, is_gold_para))  
