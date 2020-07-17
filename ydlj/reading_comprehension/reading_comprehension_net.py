@@ -499,7 +499,7 @@ class ReadingComprehensionModel:
             def sample_loop_body(sample_idx, sample_ary):
 
                 def sentence_loop_cond(sentence_idx, sentence_ary):
-                    return tf.less(sentence_idx, batch_size)
+                    return tf.less(sentence_idx, num_sentence)
 
                 def sentence_loop_body(sentence_idx, sentence_ary):
                     # sentence_length x hidden_size
@@ -1503,8 +1503,13 @@ class ReadingComprehensionModel:
             if test_per_sample:
                 for sample_idx, cur_id in enumerate(ids):
                     print('----------- {}'.format(cur_id))
-                    print('predict answer: {}'.format(answer_dict[cur_id]))
+                    answer_correct = answer_dict[cur_id] == example_dict[cur_id].orig_answer_text
+                    print('context: {}'.format(''.join(example_dict[cur_id].doc_tokens)))
+                    print('question: {}'.format(example_dict[cur_id].question_text))
+                    print('predict answer: {} {}'.format(answer_dict[cur_id], '✔' if answer_correct else '✘'))
                     print("gold answer: {}".format(example_dict[cur_id].orig_answer_text))
+                    print('predict support facts: {}'.format([item[1] for item in support_fact_dict[cur_id]]))
+                    print("gold support facts: {}".format(example_dict[cur_id].sup_fact_id))
 
         prediction = {'answer': answer_dict, 'sp': support_fact_dict}
         os.makedirs(os.path.dirname(result_file), exist_ok=True)
