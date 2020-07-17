@@ -12,20 +12,20 @@ DataSet: {
   TrainPercentage: -1,
 
   # train set example file path
-#  TrainSetExampleFile: '../data/data_correct_span/train_example.pkl.gz',
-  TrainSetExampleFile: '../data/data_combine2019_1sentence/train_example.pkl.gz',
+  TrainSetExampleFile: '../data/data_correct_span/train_example.pkl.gz',
+#  TrainSetExampleFile: '../data/data_combine2019_1sentence/train_example.pkl.gz',
 
   # train set reature file path
-#  TrainSetFeatureFile: '../data/data_correct_span/train_feature.pkl.gz',
-  TrainSetFeatureFile: '../data/data_combine2019_1sentence/train_feature.pkl.gz',
+  TrainSetFeatureFile: '../data/data_correct_span/train_feature.pkl.gz',
+#  TrainSetFeatureFile: '../data/data_combine2019_1sentence/train_feature.pkl.gz',
 
   # dev set example file path
-#  DevSetExampleFile: '../data/data_correct_span/dev_example.pkl.gz',
-  DevSetExampleFile: '../data/data_combine2019_1sentence/dev_example.pkl.gz',
+  DevSetExampleFile: '../data/data_correct_span/dev_example.pkl.gz',
+#  DevSetExampleFile: '../data/data_combine2019_1sentence/dev_example.pkl.gz',
 
   # dev set reature file path
-#  DevSetFeatureFile: '../data/data_correct_span/dev_feature.pkl.gz',
-  DevSetFeatureFile: '../data/data_combine2019_1sentence/dev_feature.pkl.gz',
+  DevSetFeatureFile: '../data/data_correct_span/dev_feature.pkl.gz',
+#  DevSetFeatureFile: '../data/data_combine2019_1sentence/dev_feature.pkl.gz',
   }
 
 ################################################################################
@@ -49,12 +49,12 @@ word_embedding_trainable: true
 
 BERT: {
   # vocabulary file for the pretrained model
-#  vocab_file: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\vocab.txt',
-   vocab_file: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/vocab.txt',
+  vocab_file: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\vocab.txt',
+#   vocab_file: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/vocab.txt',
 
   # initial checkpoint of BERT model
-#  init_checkpoint: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\bert_model.ckpt',
-   init_checkpoint: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/bert_model.ckpt',
+  init_checkpoint: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\bert_model.ckpt',
+#   init_checkpoint: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/bert_model.ckpt',
 
   # bert model configurations
   bert_config: {
@@ -273,7 +273,7 @@ grad_threshold: 5.0
 num_epoch: 50
 
 # batch_size
-batch_size: 32
+batch_size: 2
 
 # number of samples for each validation step
 validate_size: 400

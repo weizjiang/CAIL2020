@@ -192,11 +192,16 @@ def read_examples( full_file):
                         ans_start_position.append(char_to_word_offset[start_char_position])
                         ans_end_position.append(char_to_word_offset[end_char_position])
 
-                if len(doc_tokens) > 382:   
-                    break
+                # # Don't do truncation here, the original context/answer/support fact should always be kept in
+                # # examples. The truncation is done in 'convert_examples_to_features'
+                # if len(doc_tokens) > 382:
+                #     break
 
             if not JUDGE_FLAG and not FIND_FLAG:
                 print('no answer found for case {}'.format(key))
+
+            if len(sup_facts_sent_id) < len(sup_facts):
+                print('lossing support facts for case {}'.format(key))
 
             para_end_position = len(doc_tokens) - 1
             
@@ -354,6 +359,17 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length, max_query_
         sup_fact_ids = [sent_id for sent_id in sup_fact_ids if sent_id < sent_num]
         if len(sup_fact_ids) != len(example.sup_fact_id):
             failed += 1
+
+        if (ans_type == 0 and ''.join(all_doc_tokens).find(example.orig_answer_text) < 0) or (
+                ans_type != 3 and len(sup_fact_ids) != len(example.sup_fact_id)):
+            # convert to 'unknown' in case answer span is missing or support fact is truncated
+            # note that the condition 'len(ans_start_position) == 0' is not sufficient for answer check since there may
+            # be labeling errors (on support facts).
+            ans_type = 3
+            ans_start_position = []
+            ans_end_position = []
+            sup_fact_ids = []
+
         if type(example.qas_id) is int and example.qas_id < 0:
             print("qid {}".format(example.qas_id))
             print("all_doc_tokens {}".format(all_doc_tokens))
@@ -449,7 +465,8 @@ if __name__ == '__main__':
     with gzip.open(args.example_output, 'wb') as fout:
         pickle.dump(examples, fout)
 
-    features = convert_examples_to_features(examples, tokenizer, max_seq_length=512, max_query_length=50)
+    features = convert_examples_to_features(examples, tokenizer, max_seq_length=args.max_seq_length,
+                                            max_query_length=50)
     with gzip.open(args.feature_output, 'wb') as fout:
         pickle.dump(features, fout)
 
