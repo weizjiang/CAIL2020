@@ -37,19 +37,32 @@ def combine_data_set():
     # input_file_2 = r'data\train_big.json'
     # output_file = r'data\train_2020.json'
 
-    input_file_1 = r'data\dev_small.json'
-    input_file_2 = r'data\dev_big.json'
-    output_file = r'data\dev_2020.json'
+    # input_file_1 = r'data\dev_small.json'
+    # input_file_2 = r'data\dev_big.json'
+    # output_file = r'data\dev_2020.json'
+
+    # id_prefix_1 = 'cail2020_small_'
+    # id_prefix_2 = 'cail2020_big_'
+
+    input_file_1 = r'data\data2020_combine2019all_cmrc2018all_1sentence_augmented\train.json'
+    # input_file_2 = r'data\all_2019_1sentence_converted_augmented.json'
+    input_file_2 = r'data\cmrc2018_all_1sentence_converted_augmented.json'
+    output_file = input_file_1
+
+    id_prefix_1 = ''
+    id_prefix_2 = ''
 
     with open(input_file_1, 'r', encoding='utf-8') as f_in:
         data_1 = json.load(f_in)
-        for item in data_1:
-            item['_id'] = 'cail2020_small_{}'.format(item['_id'])
+        if len(id_prefix_1) > 0:
+            for item in data_1:
+                item['_id'] = '{}{}'.format(id_prefix_1, item['_id'])
 
     with open(input_file_2, 'r', encoding='utf-8') as f_in:
         data_2 = json.load(f_in)
-        for item in data_2:
-            item['_id'] = 'cail2020_big_{}'.format(item['_id'])
+        if len(id_prefix_2) > 0:
+            for item in data_2:
+                item['_id'] = '{}{}'.format(id_prefix_2, item['_id'])
 
     data = data_1 + data_2
     with open(output_file, 'w', encoding='utf-8') as f_out:
@@ -571,7 +584,7 @@ def augment_data_multi_hop(num_delete=10, num_shuffle=10):
 if __name__ == '__main__':
     # separate_dev_set()
 
-    # combine_data_set()
+    combine_data_set()
 
     # generate_dev_result()
 
@@ -581,7 +594,7 @@ if __name__ == '__main__':
 
     # augment_data_single_hop()
 
-    augment_data_multi_hop()
+    # augment_data_multi_hop()
 
     # generate_test_file()
 
