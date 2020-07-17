@@ -50,7 +50,7 @@ class ReadingComprehensionModel:
         self.num_answer_type = 4
 
     def initialize_config(self, config={}):
-        self.max_input_len = config.get('max_input_len', 16)  # the default max input length for padding
+        self.max_input_len = config.get('max_input_len', 512)  # the default max input length for padding
         self.max_num_sentence = config.get('max_num_sentence', 50)
         self.max_answer_len = config.get('max_answer_len', 50)
         self.restrict_answer_span = config.get('restrict_answer_span', False)
@@ -160,9 +160,9 @@ class ReadingComprehensionModel:
 
             self.regularizer = tf.contrib.layers.l2_regularizer(self.L2_REG_LAMBDA)
 
-            # shape: batch_size x max_sentence_length
+            # shape: batch_size x input_length
             self.input_sentence = tf.placeholder(tf.int32, [None, None], name="input_sentence")
-            # shape: batch_size x max_sentence_length
+            # shape: batch_size x input_length
             self.input_mask = tf.placeholder(tf.float32, [None, None], name='input_mask')
             # shape: batch_size, type index
             self.input_answer_type = tf.placeholder(tf.int32, shape=[None], name="input_answer_type")
@@ -170,7 +170,7 @@ class ReadingComprehensionModel:
             self.input_span_start = tf.placeholder(tf.int32, shape=[None], name="input_span_start")
             # shape: batch_size, token index
             self.input_span_end = tf.placeholder(tf.int32, shape=[None], name="input_span_end")
-            # shape: batch_size x max_sentence_length x num_sentence
+            # shape: batch_size x input_length x num_sentence
             self.input_sentence_mapping = tf.placeholder(tf.float32, shape=[None, None, None],
                                                          name="input_sentence_mapping")
             # shape: batch_size x num_sentence
@@ -387,7 +387,7 @@ class ReadingComprehensionModel:
         elif embedding_type == 'BiLSTM':
             # Bi-LSTM Layer
             with tf.variable_scope("BiLSTM" + name_appendix, reuse=tf.AUTO_REUSE):
-                actual_length = tf.reduce_sum(sentence_mask, axis=1)
+                actual_length = tf.cast(tf.reduce_sum(sentence_mask, axis=1), tf.int32)
                 lstm_in = token_embedding
                 for layer in range(self.lstm_num_layer):
                     with tf.variable_scope("layer_" + str(layer), reuse=tf.AUTO_REUSE):
@@ -434,13 +434,14 @@ class ReadingComprehensionModel:
 
     def build_graph(self):
         batch_size = tf.shape(self.input_sentence)[0]
-        sentence_len = tf.shape(self.input_sentence)[1]
+        input_len = tf.shape(self.input_sentence)[1]
+        num_sentence = tf.shape(self.input_sentence_mapping)[2]
 
         # decrease the logits for padding and query tokens
         contex_sentences_mask = tf.reduce_sum(self.input_sentence_mapping, axis=2)
 
         # for [CLS] token
-        first_token_mask = tf.cast(tf.range(sentence_len) < 1, tf.float32) + tf.zeros([batch_size, sentence_len])
+        first_token_mask = tf.cast(tf.range(input_len) < 1, tf.float32) + tf.zeros([batch_size, input_len])
 
         # --------------------------------------------------------------------------------------------------------------
         # token embedding layer
@@ -454,34 +455,95 @@ class ReadingComprehensionModel:
         # query sentence length, including [CLS] token, excluding 2 [SEP] tokens
         query_sentence_length = tf.cast(tf.reduce_sum(self.input_mask - contex_sentences_mask, axis=1, keepdims=True),
                                         tf.int32) - 2
-        query_mask = tf.cast(tf.expand_dims(tf.range(sentence_len), axis=0) < query_sentence_length, tf.float32)
+        query_mask = tf.cast(tf.expand_dims(tf.range(input_len), axis=0) < query_sentence_length, tf.float32)
         query_mask = query_mask - first_token_mask
 
         # sentence-token mapping including query and context sentences
-        # batch_size x max_sentence_length x (1+num_sentence)
+        # batch_size x input_length x (1+num_sentence)
         all_sentence_mapping = tf.concat([tf.expand_dims(query_mask, axis=2),
                                           tf.cast(self.input_sentence_mapping, tf.float32)],
                                          axis=2)
 
-        # batch_size x max_sentence_length x (1+num_sentence) x hidden_size
-        sentence_token_embedding = tf.matmul(tf.expand_dims(all_sentence_mapping, 3),
-                                             tf.expand_dims(token_embedding, 2))
+        sentence_token_embedding_use_full_dimension = False
+        if sentence_token_embedding_use_full_dimension:
+            # represent each sentence's token embedding at full demenstion (input_length)
+            # This consumes too much memory.
+            # And for BiLSTM, this doens't work, since it requires the real tokens to start at the begining.
+            # For CNN, it's not using sentence mask explictly.
 
-        if not self.sentence_embedding_type.endswith('PoolDense'):
-            # reshape to: (batch_size*(1+num_sentence)) x max_sentence_length x hidden_size
-            sentence_token_embedding = tf.reshape(tf.transpose(sentence_token_embedding, perm=[0, 2, 1, 3]),
-                                                  (-1, sentence_len, self.word_embed_size))
-            sentence_mask = tf.reshape(tf.transpose(all_sentence_mapping, perm=[0, 2, 1]), (-1, sentence_len))
+            # batch_size x input_length x (1+num_sentence) x hidden_size
+            sentence_token_embedding = tf.matmul(tf.expand_dims(all_sentence_mapping, 3),
+                                                 tf.expand_dims(token_embedding, 2))
+
+            if not self.sentence_embedding_type.endswith('PoolDense'):
+                # reshape to: (batch_size*(1+num_sentence)) x input_length x hidden_size
+                sentence_token_embedding = tf.reshape(tf.transpose(sentence_token_embedding, perm=[0, 2, 1, 3]),
+                                                      (-1, input_len, self.word_embed_size))
+                sentence_mask = tf.reshape(tf.transpose(all_sentence_mapping, perm=[0, 2, 1]), (-1, input_len))
+            else:
+                # the reshaping is not need for 'PoolDense' embedding types, since they can process 4-D array (always
+                # pooling on the 2nd dimenstion)
+                sentence_mask = all_sentence_mapping
         else:
-            # 'PoolDense' can process 4-D input
-            sentence_mask = all_sentence_mapping
+            # reduce each sentence's token embedding sequence length, to the maximum sentence length
 
-        # batch_size x (1+num_sentence) x sentence_embed_size
+            # batch_size x (1+num_sentence)
+            sentence_lengths = tf.cast(tf.reduce_sum(all_sentence_mapping, axis=1), tf.int32)
+            max_sent_len = tf.reduce_max(sentence_lengths)
+
+            def sample_loop_cond(sample_idx, sample_ary):
+                return tf.less(sample_idx, batch_size)
+
+            def sample_loop_body(sample_idx, sample_ary):
+
+                def sentence_loop_cond(sentence_idx, sentence_ary):
+                    return tf.less(sentence_idx, batch_size)
+
+                def sentence_loop_body(sentence_idx, sentence_ary):
+                    # sentence_length x hidden_size
+                    sample_sentence_token_embedding = tf.gather(
+                        token_embedding[sample_idx],
+                        tf.squeeze(tf.where(all_sentence_mapping[sample_idx, :, sentence_idx] > 0), axis=1))
+                    padding = tf.zeros((max_sent_len - sentence_lengths[sample_idx, sentence_idx],
+                                        self.word_embed_size))
+                    # max_sent_len x hidden_size
+                    sample_sentence_token_embedding = tf.concat([sample_sentence_token_embedding, padding], axis=0)
+
+                    return sentence_idx + 1, sentence_ary.write(sentence_idx, sample_sentence_token_embedding)
+
+                sentence_embedding_ary = tf.TensorArray(tf.float32, size=num_sentence + 1, infer_shape=True)
+                _, sentence_embedding_ary = tf.while_loop(
+                    sentence_loop_cond,
+                    sentence_loop_body,
+                    (tf.constant(0), sentence_embedding_ary),
+                    name='sentence_reconstructor'
+                )
+                sentence_embeddings = sentence_embedding_ary.stack()
+
+                return sample_idx + 1, sample_ary.write(sample_idx, sentence_embeddings)
+
+            embedding_ary = tf.TensorArray(tf.float32, size=batch_size, infer_shape=True)
+            _, embedding_ary = tf.while_loop(
+                sample_loop_cond,
+                sample_loop_body,
+                (tf.constant(0), embedding_ary),
+                name='batch_reconstructor'
+            )
+            sentence_token_embedding = embedding_ary.stack()
+
+            # (batch_size*(1+num_sentence)) x max_sent_len x hidden_size
+            sentence_token_embedding = tf.reshape(
+                sentence_token_embedding, (batch_size * (num_sentence + 1), max_sent_len, self.word_embed_size))
+
+            sentence_mask = tf.reshape(tf.transpose(all_sentence_mapping, perm=[0, 2, 1]), (-1, input_len))
+
         sentence_embedding = self.sentence_embedding_model(sentence_token_embedding, sentence_mask,
                                                            embedding_type=self.sentence_embedding_type,
                                                            embedding_size=self.sentence_embed_size,
                                                            name='support_fact_sentence')
-        if not self.sentence_embedding_type.endswith('PoolDense'):
+
+        if sentence_embedding.get_shape().ndims == 2:
+            # reshape to: batch_size x (1+num_sentence) x sentence_embed_size
             sentence_embedding = tf.reshape(sentence_embedding, (batch_size, -1, self.sentence_embed_size))
 
         # --------------------------------------------------------------------------------------------------------------
@@ -553,7 +615,7 @@ class ReadingComprehensionModel:
 
         if self.answer_span_predict_model == 'Transformer':
             with tf.variable_scope("answer_span_model", reuse=tf.AUTO_REUSE):
-                # batch_size x max_sentence_length x max_sentence_length
+                # batch_size x input_length x input_length
                 token_attention_mask = tf.logical_and(tf.expand_dims(self.input_mask > 0, axis=2),
                                                       tf.expand_dims(self.input_mask > 0, axis=1))
 
@@ -591,21 +653,21 @@ class ReadingComprehensionModel:
 
         span_logits = span_logits - 100 * (1 - tf.expand_dims(span_contex_sentences_mask, axis=2))
 
-        # batch_size x max_sentence_length x max_sentence_length
+        # batch_size x input_length x input_length
         span_logit_sum = tf.expand_dims(span_logits[:, :, 0], axis=2) + tf.expand_dims(span_logits[:, :, 1], axis=1)
         span_mask = tf.constant(
             np.tril(np.triu(np.ones((self.max_input_len, self.max_input_len)), 0), self.max_answer_len),
             dtype=tf.float32)
-        span_logit_sum = span_logit_sum - 100 * tf.expand_dims(1 - span_mask[:sentence_len, :sentence_len], 0)
+        span_logit_sum = span_logit_sum - 100 * tf.expand_dims(1 - span_mask[:input_len, :input_len], 0)
         self.span_start_pos = tf.arg_max(tf.reduce_max(span_logit_sum, axis=2), dimension=1, name='span_start_pos')
         self.span_end_pos = tf.arg_max(tf.reduce_max(span_logit_sum, axis=1), dimension=1, name='span_end_pos')
 
         # softmax over all tokens of sentence length
         self.span_start_prob = tf.nn.softmax(span_logits[:, :, 0], name='span_start_prob')
         self.span_end_prob = tf.nn.softmax(span_logits[:, :, 1], name='span_end_prob')
-        span_start_ce = tf.nn.softmax_cross_entropy_with_logits(labels=tf.one_hot(self.input_span_start, sentence_len),
+        span_start_ce = tf.nn.softmax_cross_entropy_with_logits(labels=tf.one_hot(self.input_span_start, input_len),
                                                                 logits=span_logits[:, :, 0])
-        span_end_ce = tf.nn.softmax_cross_entropy_with_logits(labels=tf.one_hot(self.input_span_end, sentence_len),
+        span_end_ce = tf.nn.softmax_cross_entropy_with_logits(labels=tf.one_hot(self.input_span_end, input_len),
                                                               logits=span_logits[:, :, 1])
         span_ce = span_start_ce + span_end_ce
 
@@ -1033,20 +1095,20 @@ class ReadingComprehensionModel:
 
     def predict_answer_span(self, input_tokens, span_start_prob, span_end_prob):
         batch_size = input_tokens.shape[0]
-        sentence_len = input_tokens.shape[1]
+        input_len = input_tokens.shape[1]
         span_prob = np.expand_dims(span_start_prob, axis=2) * np.expand_dims(span_end_prob, axis=1)
-        span_mask = np.tril(np.triu(np.ones((sentence_len, sentence_len)), 0), self.max_answer_len)
+        span_mask = np.tril(np.triu(np.ones((input_len, input_len)), 0), self.max_answer_len)
         
         # generate mask considerting the restriction characters, which is not allowed in the answer span
         # note that the 'end' pos is included in the answer span
         restrict_chars = ['，', '。', '；', '！', '？']
         restrict_tokens = [self.bert_tokenizer.vocab[char] for char in restrict_chars]
-        restrict_mask = np.zeros([batch_size, sentence_len, sentence_len])
+        restrict_mask = np.zeros([batch_size, input_len, input_len])
         for sample_idx in range(batch_size):
-            for start_idx in range(sentence_len):
+            for start_idx in range(input_len):
                 if input_tokens[sample_idx, start_idx] in restrict_tokens:
                     continue
-                for end_idx in range(start_idx, sentence_len):
+                for end_idx in range(start_idx, input_len):
                     if input_tokens[sample_idx, end_idx] in restrict_tokens:
                         break
                     restrict_mask[sample_idx, start_idx, end_idx] = 1
