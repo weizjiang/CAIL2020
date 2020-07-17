@@ -9,15 +9,20 @@ import numpy as np
 
 
 def separate_dev_set():
-    input_file = r'C:\Works\DataSet\CAIL\ydlj_small_data\train.json'
-    train_data_file = r'data\train.json'
-    dev_data_file = r'data\dev.json'
-    
+    # input_file = r'C:\Works\DataSet\CAIL\ydlj_small_data\train.json'
+    # train_data_file = r'data\train_small.json'
+    # dev_data_file = r'data\dev_small.json'
+    # train_set_ratio = 0.8
+
+    input_file = r'C:\Works\DataSet\CAIL\ydlj_big_data\train.json'
+    train_data_file = r'data\train_big.json'
+    dev_data_file = r'data\dev_big.json'
+    train_set_ratio = 0.9
+
     with open(input_file, 'r', encoding='utf-8') as f_in:
         all_data = json.load(f_in)
     
     random.shuffle(all_data)
-    train_set_ratio = 0.8
     train_set_size = int(len(all_data) * train_set_ratio)
     
     with open(train_data_file, 'w', encoding='utf-8') as f_out:
@@ -25,6 +30,30 @@ def separate_dev_set():
     
     with open(dev_data_file, 'w', encoding='utf-8') as f_out:
         json.dump(all_data[train_set_size:], f_out, ensure_ascii=False, indent=4)
+
+
+def combine_data_set():
+    # input_file_1 = r'data\train_small.json'
+    # input_file_2 = r'data\train_big.json'
+    # output_file = r'data\train_2020.json'
+
+    input_file_1 = r'data\dev_small.json'
+    input_file_2 = r'data\dev_big.json'
+    output_file = r'data\dev_2020.json'
+
+    with open(input_file_1, 'r', encoding='utf-8') as f_in:
+        data_1 = json.load(f_in)
+        for item in data_1:
+            item['_id'] = 'cail2020_small_{}'.format(item['_id'])
+
+    with open(input_file_2, 'r', encoding='utf-8') as f_in:
+        data_2 = json.load(f_in)
+        for item in data_2:
+            item['_id'] = 'cail2020_big_{}'.format(item['_id'])
+
+    data = data_1 + data_2
+    with open(output_file, 'w', encoding='utf-8') as f_out:
+        json.dump(data, f_out, ensure_ascii=False, indent=4)
 
 
 def generate_dev_result():
@@ -488,8 +517,8 @@ def augment_data_multi_hop(num_delete=10, num_shuffle=10):
     :param num_shuffle:
     :return:
     """
-    in_file = r'data/train.json'
-    out_file = r'data/train_augmented.json'
+    in_file = r'data/train_2020.json'
+    out_file = r'data/train_2020_augmented.json'
 
     with open(in_file, 'r', encoding='utf-8') as f_in:
         data = json.load(f_in)
@@ -542,15 +571,17 @@ def augment_data_multi_hop(num_delete=10, num_shuffle=10):
 if __name__ == '__main__':
     # separate_dev_set()
 
+    # combine_data_set()
+
     # generate_dev_result()
 
     # convert_cail2019_data(dataset='train', separate_paragraph=True)
 
     # convert_cmrc2018_data(dataset='dev', separate_paragraph=False)
 
-    augment_data_single_hop()
+    # augment_data_single_hop()
 
-    # augment_data_multi_hop()
+    augment_data_multi_hop()
 
     # generate_test_file()
 

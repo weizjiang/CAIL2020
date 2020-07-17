@@ -9,7 +9,7 @@ outfile = "../result/result.json"
 
 
 def main():
-    RCModel = ReadingComprehensionModel(model_path=os.path.abspath('./checkpoints/rc_20200709-163056'),
+    RCModel = ReadingComprehensionModel(model_path=os.path.abspath('./checkpoints/rc_20200716-102909'),
                                         model_selection='B')
 
     examples = read_examples(full_file=os.path.abspath(infile))
