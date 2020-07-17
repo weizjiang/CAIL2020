@@ -499,7 +499,7 @@ class ReadingComprehensionModel:
             def sample_loop_body(sample_idx, sample_ary):
 
                 def sentence_loop_cond(sentence_idx, sentence_ary):
-                    return tf.less(sentence_idx, num_sentence)
+                    return tf.less(sentence_idx, num_sentence+1)
 
                 def sentence_loop_body(sentence_idx, sentence_ary):
                     # sentence_length x hidden_size
@@ -513,7 +513,7 @@ class ReadingComprehensionModel:
 
                     return sentence_idx + 1, sentence_ary.write(sentence_idx, sample_sentence_token_embedding)
 
-                sentence_embedding_ary = tf.TensorArray(tf.float32, size=num_sentence + 1, infer_shape=True)
+                sentence_embedding_ary = tf.TensorArray(tf.float32, size=num_sentence+1, infer_shape=True)
                 _, sentence_embedding_ary = tf.while_loop(
                     sentence_loop_cond,
                     sentence_loop_body,
