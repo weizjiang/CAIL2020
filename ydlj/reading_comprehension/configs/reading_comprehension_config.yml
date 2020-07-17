@@ -213,6 +213,15 @@ answer_type_embedding_type: 'MaxPoolDense'
 # if true, also consider yes/no/unknown types labeled as [0,0]
 span_loss_all_samples: true
 
+# whether to use all samples to calculate support fact loss
+# if false, only consider samples with more than one sentences
+support_fact_loss_all_samples: true
+
+# how to combine the support fact loss on different sentences
+# 'Mean': averge over all sentences
+# 'Sum': sum over all sentences
+support_fact_loss_type: 'Mean'
+
 # span loss weight
 span_loss_weight: 1.0
 

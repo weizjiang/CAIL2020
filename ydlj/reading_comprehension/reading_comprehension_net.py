@@ -128,6 +128,8 @@ class ReadingComprehensionModel:
         self.support_fact_reasoning_model = config.get('support_fact_reasoning_model', 'None')
         self.support_fact_transformer = config.get('support_fact_transformer', {})
 
+        self.support_fact_loss_all_samples = config.get('support_fact_loss_all_samples', True)
+        self.support_fact_loss_type = config.get('support_fact_loss_type', 'Mean')
         self.span_loss_all_samples = config.get('span_loss_all_samples', False)
         self.span_loss_weight = config.get('span_loss_weight', 1.0)
         self.answer_type_loss_weight = config.get('answer_type_loss_weight', 1.0)
@@ -535,7 +537,9 @@ class ReadingComprehensionModel:
             sentence_token_embedding = tf.reshape(
                 sentence_token_embedding, (batch_size * (num_sentence + 1), max_sent_len, self.word_embed_size))
 
-            sentence_mask = tf.reshape(tf.transpose(all_sentence_mapping, perm=[0, 2, 1]), (-1, input_len))
+            sentence_mask = tf.cast(
+                tf.expand_dims(tf.range(max_sent_len), axis=0) < tf.reshape(sentence_lengths, (-1, 1)),
+                tf.float32)
 
         sentence_embedding = self.sentence_embedding_model(sentence_token_embedding, sentence_mask,
                                                            embedding_type=self.sentence_embedding_type,
@@ -600,8 +604,31 @@ class ReadingComprehensionModel:
         # maybe no need, since the train data has valid support fact label (empty) for 'unknown' case
         support_fact_ce = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.input_support_facts,
                                                                   logits=support_fact_logits)
-        self.support_fact_loss = tf.divide(tf.reduce_sum(support_fact_ce), tf.reduce_sum(valid_sentence_mask),
-                                           name='support_fact_loss')
+
+        if self.support_fact_loss_all_samples:
+            if self.support_fact_loss_type == 'Mean':
+                self.support_fact_loss = tf.divide(tf.reduce_sum(support_fact_ce), tf.reduce_sum(valid_sentence_mask),
+                                                   name='support_fact_loss')
+            elif self.support_fact_loss_type == 'Sum':
+                self.support_fact_loss = tf.divide(tf.reduce_sum(support_fact_ce), tf.cast(batch_size, tf.float32),
+                                                   name='support_fact_loss')
+        else:
+            num_valid_sentence = tf.reduce_sum(valid_sentence_mask, axis=1)
+            support_fact_samples = tf.squeeze(tf.where(num_valid_sentence > 1), axis=1)
+            support_fact_ce_valid = tf.gather(support_fact_ce, support_fact_samples)
+            support_fact_valid_sample_number = tf.cast(tf.size(support_fact_samples), tf.float32)
+            if self.support_fact_loss_type == 'Mean':
+                support_fact_loss = tf.cond(tf.equal(support_fact_valid_sample_number, 0),
+                                            lambda: tf.constant(0, tf.float32),
+                                            lambda: tf.divide(tf.reduce_sum(support_fact_ce_valid),
+                                                              support_fact_valid_sample_number))
+            elif self.support_fact_loss_type == 'Sum':
+                num_support_fact_sentence = tf.gather(num_valid_sentence, support_fact_samples)
+                support_fact_loss = tf.cond(tf.equal(support_fact_valid_sample_number, 0),
+                                            lambda: tf.constant(0, tf.float32),
+                                            lambda: tf.divide(tf.reduce_sum(support_fact_ce_valid),
+                                                              tf.reduce_sum(num_support_fact_sentence)))
+            self.support_fact_loss = tf.identity(support_fact_loss, name='support_fact_loss')
 
         # --------------------------------------------------------------------------------------------------------------
         # answer type and span prediction layer
@@ -674,7 +701,7 @@ class ReadingComprehensionModel:
         if self.span_loss_all_samples:
             self.span_loss = tf.reduce_mean(span_ce, name='span_loss')
         else:
-            span_answer_samples = tf.where(tf.equal(self.input_answer_type, 0))
+            span_answer_samples = tf.squeeze(tf.where(tf.equal(self.input_answer_type, 0)), axis=1)
             span_loss = tf.cond(tf.equal(tf.size(span_answer_samples), 0),
                                 lambda: tf.constant(0, tf.float32),
                                 lambda: tf.reduce_mean(tf.gather(span_ce, span_answer_samples)))
