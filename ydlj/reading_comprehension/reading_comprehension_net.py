@@ -467,7 +467,7 @@ class ReadingComprehensionModel:
                                          axis=2)
 
         sentence_token_embedding_use_full_dimension = False
-        if sentence_token_embedding_use_full_dimension:
+        if sentence_token_embedding_use_full_dimension or self.sentence_embedding_type.endswith('PoolDense'):
             # represent each sentence's token embedding at full demenstion (input_length)
             # This consumes too much memory.
             # And for BiLSTM, this doens't work, since it requires the real tokens to start at the begining.
