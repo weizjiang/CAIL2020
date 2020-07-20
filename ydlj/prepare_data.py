@@ -32,6 +32,63 @@ def separate_dev_set():
         json.dump(all_data[train_set_size:], f_out, ensure_ascii=False, indent=4)
 
 
+def combine_support_facts():
+    # combine the support facts so that the answer only appears in one sentence
+
+    input_file = r'data\train_big.json'
+    output_file = r'data\train_big_combine_answer.json'
+
+    # input_file = r'data\dev_big.json'
+    # output_file = r'data\dev_big_combine_answer.json'
+
+    with open(input_file, 'r', encoding='utf-8') as f_in:
+        data = json.load(f_in)
+
+    for item in data:
+        if item["answer"] in ['yes', 'no', 'unknown']:
+            continue
+
+        find_answer = False
+        for support_fact in item["supporting_facts"]:
+            if item['context'][0][1][support_fact[1]].find(item["answer"]) >= 0:
+                find_answer = True
+                break
+
+        if not find_answer:
+            context = item['context'][0][1]
+            combined_support_fact_text = ''
+            support_fact_starts = []
+            for support_fact in item["supporting_facts"]:
+                support_fact_text = context[support_fact[1]]
+                support_fact_starts.append(len(combined_support_fact_text))
+                combined_support_fact_text += support_fact_text
+            ans_pos = combined_support_fact_text.find(item["answer"])
+            if ans_pos >= 0:
+                support_fact_ends = np.array(support_fact_starts[1:] + [len(combined_support_fact_text)])
+                support_fact_starts = np.array(support_fact_starts)
+                support_fact_indices = np.flatnonzero(
+                    np.logical_and(support_fact_ends > ans_pos, support_fact_starts < ans_pos + len(item["answer"])))
+
+                support_fact_with_answer = [support_fact[1] for idx, support_fact in enumerate(item["supporting_facts"])
+                                            if idx in support_fact_indices]
+                combined_support_fact = ''.join([context[idx] for idx in support_fact_with_answer])
+                context[support_fact_with_answer[0]] = combined_support_fact
+                context = [sent for idx, sent in enumerate(context) if idx not in support_fact_with_answer[1:]]
+                item['context'][0][1] = context
+
+                reduced_support_facts = []
+                for support_fact in item["supporting_facts"]:
+                    if support_fact[1] <= support_fact_with_answer[0]:
+                        reduced_support_facts.append(support_fact)
+                    elif support_fact[1] > support_fact_with_answer[-1]:
+                        support_fact[1] = support_fact[1] - len(support_fact_with_answer) + 1
+                        reduced_support_facts.append(support_fact)
+                item["supporting_facts"] = reduced_support_facts
+
+    with open(output_file, 'w', encoding='utf-8') as f_out:
+        json.dump(data, f_out, ensure_ascii=False, indent=4)
+
+
 def combine_data_set():
     # input_file_1 = r'data\train_small.json'
     # input_file_2 = r'data\train_big.json'
@@ -44,11 +101,25 @@ def combine_data_set():
     # id_prefix_1 = 'cail2020_small_'
     # id_prefix_2 = 'cail2020_big_'
 
-    input_file_1 = r'data\data2020_combine2019all_cmrc2018all_1sentence_augmented\train.json'
+    # input_file_1 = r'data\data2020_combine2019all_cmrc2018all_1sentence_augmented\train.json'
+    # # input_file_2 = r'data\all_2019_1sentence_converted_augmented.json'
+    # input_file_2 = r'data\cmrc2018_all_1sentence_converted_augmented.json'
+    # output_file = input_file_1
+    #
+    # id_prefix_1 = ''
+    # id_prefix_2 = ''
+
+    # input_file_1 = r'data\data_big_combine2019all_cmrc2018all_1sentence\train.json'
+    # # input_file_2 = r'data\all_2019_1sentence_converted.json'
+    # input_file_2 = r'data\cmrc2018_all_1sentence_converted.json'
+    # output_file = input_file_1
+
+    input_file_1 = r'data\data_big_combine2019all_cmrc2018all_1sentence_augmented\train.json'
     # input_file_2 = r'data\all_2019_1sentence_converted_augmented.json'
     input_file_2 = r'data\cmrc2018_all_1sentence_converted_augmented.json'
     output_file = input_file_1
 
+    # id_prefix_1 = 'cail2020_'
     id_prefix_1 = ''
     id_prefix_2 = ''
 
@@ -530,8 +601,8 @@ def augment_data_multi_hop(num_delete=10, num_shuffle=10):
     :param num_shuffle:
     :return:
     """
-    in_file = r'data/train_2020.json'
-    out_file = r'data/train_2020_augmented.json'
+    in_file = r'data/train_big_combine_answer.json'
+    out_file = r'data/train_big_combine_answer_augmented.json'
 
     with open(in_file, 'r', encoding='utf-8') as f_in:
         data = json.load(f_in)
@@ -583,6 +654,8 @@ def augment_data_multi_hop(num_delete=10, num_shuffle=10):
 
 if __name__ == '__main__':
     # separate_dev_set()
+
+    # combine_support_facts()
 
     combine_data_set()
 

@@ -25,7 +25,7 @@ python data_process.py \
 # data_process.py parameters
 
 # # train set
-# --tokenizer_path=C:\Works\PretrainedModel\chinese_roberta_wwm_ext_pytorch --full_data=C:\Works\Code\CAIL2020\ydlj\data\train.json --example_output=../data/train_example.pkl.gz --feature_output=../data/train_feature.pkl.gz
+# --tokenizer_path=C:\Works\PretrainedModel\chinese_roberta_wwm_ext_pytorch --full_data=C:\Works\Code\CAIL2020\ydlj\data\train_big.json --example_output=../data/train_example.pkl.gz --feature_output=../data/train_feature.pkl.gz
 
 # # dev set
-# --tokenizer_path=C:\Works\PretrainedModel\chinese_roberta_wwm_ext_pytorch --full_data=C:\Works\Code\CAIL2020\ydlj\data\dev.json --example_output=../data/dev_example.pkl.gz --feature_output=../data/dev_feature.pkl.gz
+# --tokenizer_path=C:\Works\PretrainedModel\chinese_roberta_wwm_ext_pytorch --full_data=C:\Works\Code\CAIL2020\ydlj\data\dev_big.json --example_output=../data/dev_example.pkl.gz --feature_output=../data/dev_feature.pkl.gz

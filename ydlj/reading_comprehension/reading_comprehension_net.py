@@ -205,7 +205,7 @@ class ReadingComprehensionModel:
 
     def token_embedding_layer(self, tokens, input_mask):
         if self.word_embed_type == 'bert':
-            # the original BERT model cannot to use placeholder self.is_training. Set to False: no dropout in bert model!
+            # the original BERT model cannot to use placeholder self.is_training.
             bert_model = bert_modeling.BertModel(
                 config=self.bert_config,
                 is_training=self.is_training,
@@ -322,7 +322,7 @@ class ReadingComprehensionModel:
                         # make arbitrary pooling size and dynamic sentence length not possible.
                         # Note: max_pooling1d doesn't support dynamic pool_size
                         layer_out = tf.reduce_max(
-                            conv_out, axis=1, keep_dims=False,
+                            conv_out, axis=1, keepdims=False,
                             name="max_pool_%d" % layer)
                     else:
                         layer_out = tf.layers.max_pooling1d(
@@ -508,7 +508,9 @@ class ReadingComprehensionModel:
                     sample_sentence_token_embedding = tf.gather(
                         token_embedding[sample_idx],
                         tf.squeeze(tf.where(all_sentence_mapping[sample_idx, :, sentence_idx] > 0.5), axis=1))
-                    padding = tf.zeros((max_sent_len - sentence_lengths[sample_idx, sentence_idx],
+                    # padding = tf.zeros((max_sent_len - sentence_lengths[sample_idx, sentence_idx],
+                    #                     self.word_embed_size))
+                    padding = tf.zeros((max_sent_len - tf.shape(sample_sentence_token_embedding)[0],
                                         self.word_embed_size))
                     # max_sent_len x hidden_size
                     sample_sentence_token_embedding = tf.concat([sample_sentence_token_embedding, padding], axis=0)
