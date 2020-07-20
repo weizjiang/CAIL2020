@@ -449,6 +449,7 @@ class ReadingComprehensionModel:
         # token embedding layer
 
         # get the word embeddings
+        # batch_size x input_length x hidden_size
         token_embedding = self.token_embedding_layer(self.input_sentence, self.input_mask)
 
         # --------------------------------------------------------------------------------------------------------------
@@ -483,7 +484,7 @@ class ReadingComprehensionModel:
                                                       (-1, input_len, self.word_embed_size))
                 sentence_mask = tf.reshape(tf.transpose(all_sentence_mapping, perm=[0, 2, 1]), (-1, input_len))
             else:
-                # the reshaping is not need for 'PoolDense' embedding types, since they can process 4-D array (always
+                # the reshaping is not needed for 'PoolDense' embedding types, since they can process 4-D array (always
                 # pooling on the 2nd dimenstion)
                 sentence_mask = all_sentence_mapping
         else:
@@ -491,6 +492,7 @@ class ReadingComprehensionModel:
 
             # batch_size x (1+num_sentence)
             sentence_lengths = tf.cast(tf.reduce_sum(all_sentence_mapping, axis=1), tf.int32)
+            # max over all sentences in all samples in a batch
             max_sent_len = tf.reduce_max(sentence_lengths)
 
             def sample_loop_cond(sample_idx, sample_ary):
@@ -505,7 +507,7 @@ class ReadingComprehensionModel:
                     # sentence_length x hidden_size
                     sample_sentence_token_embedding = tf.gather(
                         token_embedding[sample_idx],
-                        tf.squeeze(tf.where(all_sentence_mapping[sample_idx, :, sentence_idx] > 0), axis=1))
+                        tf.squeeze(tf.where(all_sentence_mapping[sample_idx, :, sentence_idx] > 0.5), axis=1))
                     padding = tf.zeros((max_sent_len - sentence_lengths[sample_idx, sentence_idx],
                                         self.word_embed_size))
                     # max_sent_len x hidden_size
@@ -556,7 +558,7 @@ class ReadingComprehensionModel:
         if self.support_fact_reasoning_model == 'Transformer':
             with tf.variable_scope("support_fact_model", reuse=tf.AUTO_REUSE):
                 # batch_size x (1+num_sentence)
-                all_sentences = tf.reduce_any(all_sentence_mapping > 0, axis=1)
+                all_sentences = tf.reduce_any(all_sentence_mapping > 0.5, axis=1)
                 # batch_size x (1+num_sentence) x (1+num_sentence)
                 sentence_attention_mask = tf.logical_and(tf.expand_dims(all_sentences, axis=2),
                                                          tf.expand_dims(all_sentences, axis=1))
@@ -595,7 +597,7 @@ class ReadingComprehensionModel:
         support_fact_logits = tf.squeeze(support_fact_logits, axis=2)
 
         # Mask the real sentences. For non sentence position, the cross-entropy will be 0.
-        valid_sentence_mask = tf.cast(tf.reduce_any(self.input_sentence_mapping > 0, axis=1), tf.float32)
+        valid_sentence_mask = tf.cast(tf.reduce_any(self.input_sentence_mapping > 0.5, axis=1), tf.float32)
         support_fact_logits = support_fact_logits - 100 * (1 - valid_sentence_mask)
 
         self.support_fact_prob = tf.sigmoid(support_fact_logits, name='support_fact_prob')
@@ -643,8 +645,8 @@ class ReadingComprehensionModel:
         if self.answer_span_predict_model == 'Transformer':
             with tf.variable_scope("answer_span_model", reuse=tf.AUTO_REUSE):
                 # batch_size x input_length x input_length
-                token_attention_mask = tf.logical_and(tf.expand_dims(self.input_mask > 0, axis=2),
-                                                      tf.expand_dims(self.input_mask > 0, axis=1))
+                token_attention_mask = tf.logical_and(tf.expand_dims(self.input_mask > 0.5, axis=2),
+                                                      tf.expand_dims(self.input_mask > 0.5, axis=1))
 
                 span_embedding = bert_modeling.transformer_model(
                     token_embedding_ext,
@@ -932,7 +934,7 @@ class ReadingComprehensionModel:
                 continue
 
             valid_idx = np.array(valid_sample_idx)
-            input_lengths = np.sum(context_mask[valid_idx] > 0, axis=1)
+            input_lengths = np.sum(context_mask[valid_idx] > 0.5, axis=1)
             max_c_len = int(input_lengths.max())
 
             yield {
