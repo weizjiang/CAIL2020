@@ -466,9 +466,22 @@ class ReadingComprehensionModel:
         all_sentence_mapping = tf.concat([tf.expand_dims(query_mask, axis=2),
                                           tf.cast(self.input_sentence_mapping, tf.float32)],
                                          axis=2)
+        # batch_size x (1+num_sentence)
+        all_sentence_lengths = tf.cast(tf.reduce_sum(all_sentence_mapping, axis=1), tf.int32)
 
+        sentence_lengths_1d = tf.reshape(all_sentence_lengths, (-1, 1))
+        
+        # max over all sentences in all samples in a batch
+        max_sent_len = tf.reduce_max(all_sentence_lengths)
+
+        # if False, reduce each sentence's token embedding sequence length, to the maximum sentence length
         sentence_token_embedding_use_full_dimension = False
-        if sentence_token_embedding_use_full_dimension or self.sentence_embedding_type.endswith('PoolDense'):
+
+        # if False, remove null sentences when deriving sentence embeddings.
+        # only valid when sentence_token_embedding_use_full_dimension is False
+        sentence_token_embedding_with_null = False
+
+        if sentence_token_embedding_use_full_dimension:  # or self.sentence_embedding_type.endswith('PoolDense'):
             # represent each sentence's token embedding at full demenstion (input_length)
             # This consumes too much memory.
             # And for BiLSTM, this doens't work, since it requires the real tokens to start at the begining.
@@ -488,12 +501,6 @@ class ReadingComprehensionModel:
                 # pooling on the 2nd dimenstion)
                 sentence_mask = all_sentence_mapping
         else:
-            # reduce each sentence's token embedding sequence length, to the maximum sentence length
-
-            # batch_size x (1+num_sentence)
-            sentence_lengths = tf.cast(tf.reduce_sum(all_sentence_mapping, axis=1), tf.int32)
-            # max over all sentences in all samples in a batch
-            max_sent_len = tf.reduce_max(sentence_lengths)
 
             def sample_loop_cond(sample_idx, sample_ary):
                 return tf.less(sample_idx, batch_size)
@@ -501,14 +508,25 @@ class ReadingComprehensionModel:
             def sample_loop_body(sample_idx, sample_ary):
 
                 def sentence_loop_cond(sentence_idx, sentence_ary):
-                    return tf.less(sentence_idx, num_sentence+1)
+                    if sentence_token_embedding_with_null:
+                        return tf.less(sentence_idx, num_sentence + 1)
+                    else:
+                        # # logical_and cannot do short-cut?
+                        # return tf.logical_and(tf.less(sentence_idx, num_sentence+1),
+                        #                       tf.greater(all_sentence_lengths[sample_idx, sentence_idx], 0))
+                        return tf.cond(tf.less(sentence_idx, num_sentence+1),
+                                       lambda: tf.greater(all_sentence_lengths[sample_idx, sentence_idx], 0),
+                                       lambda: tf.constant(False, tf.bool))
 
                 def sentence_loop_body(sentence_idx, sentence_ary):
                     # sentence_length x hidden_size
                     sample_sentence_token_embedding = tf.gather(
                         token_embedding[sample_idx],
                         tf.squeeze(tf.where(all_sentence_mapping[sample_idx, :, sentence_idx] > 0.5), axis=1))
-                    # padding = tf.zeros((max_sent_len - sentence_lengths[sample_idx, sentence_idx],
+
+                    # # this padding may cause error when write array:
+                    # # value shape incompatible with the TensorArray's inferred element shape
+                    # padding = tf.zeros((max_sent_len - all_sentence_lengths[sample_idx, sentence_idx],
                     #                     self.word_embed_size))
                     padding = tf.zeros((max_sent_len - tf.shape(sample_sentence_token_embedding)[0],
                                         self.word_embed_size))
@@ -517,7 +535,11 @@ class ReadingComprehensionModel:
 
                     return sentence_idx + 1, sentence_ary.write(sentence_idx, sample_sentence_token_embedding)
 
-                sentence_embedding_ary = tf.TensorArray(tf.float32, size=num_sentence+1, infer_shape=True)
+                if sentence_token_embedding_with_null:
+                    sentence_embedding_ary = tf.TensorArray(tf.float32, size=num_sentence+1, infer_shape=True)
+                else:
+                    sentence_embedding_ary = tf.TensorArray(tf.float32, size=2, dynamic_size=True, infer_shape=True)
+
                 _, sentence_embedding_ary = tf.while_loop(
                     sentence_loop_cond,
                     sentence_loop_body,
@@ -527,23 +549,33 @@ class ReadingComprehensionModel:
                 sentence_embeddings = sentence_embedding_ary.stack()
 
                 return sample_idx + 1, sample_ary.write(sample_idx, sentence_embeddings)
-
-            embedding_ary = tf.TensorArray(tf.float32, size=batch_size, infer_shape=True)
+            
+            if sentence_token_embedding_with_null:
+                embedding_ary = tf.TensorArray(tf.float32, size=batch_size, infer_shape=True)
+            else:
+                embedding_ary = tf.TensorArray(tf.float32, size=batch_size, infer_shape=False,
+                                               element_shape=[None, None, self.word_embed_size])
             _, embedding_ary = tf.while_loop(
                 sample_loop_cond,
                 sample_loop_body,
                 (tf.constant(0), embedding_ary),
                 name='batch_reconstructor'
             )
-            sentence_token_embedding = embedding_ary.stack()
-
-            # (batch_size*(1+num_sentence)) x max_sent_len x hidden_size
-            sentence_token_embedding = tf.reshape(
-                sentence_token_embedding, (batch_size * (num_sentence + 1), max_sent_len, self.word_embed_size))
 
             sentence_mask = tf.cast(
-                tf.expand_dims(tf.range(max_sent_len), axis=0) < tf.reshape(sentence_lengths, (-1, 1)),
+                tf.expand_dims(tf.range(max_sent_len), axis=0) < sentence_lengths_1d,
                 tf.float32)
+
+            if sentence_token_embedding_with_null:
+                sentence_token_embedding = embedding_ary.stack()
+                # (batch_size*(1+num_sentence)) x max_sent_len x hidden_size
+                sentence_token_embedding = tf.reshape(
+                    sentence_token_embedding, (batch_size * (num_sentence + 1), max_sent_len, self.word_embed_size))
+            else:
+                # total_num_sentence_in_batch x max_sent_len x hidden_size
+                sentence_token_embedding = embedding_ary.concat()
+
+                sentence_mask = tf.gather(sentence_mask, tf.where(sentence_lengths_1d > 0)[:, 0])
 
         sentence_embedding = self.sentence_embedding_model(sentence_token_embedding, sentence_mask,
                                                            embedding_type=self.sentence_embedding_type,
@@ -551,6 +583,12 @@ class ReadingComprehensionModel:
                                                            name='support_fact_sentence')
 
         if sentence_embedding.get_shape().ndims == 2:
+            if not sentence_token_embedding_with_null:
+                # restore to full size
+                valid_sentence_mapping = tf.gather(tf.eye(batch_size * (num_sentence + 1)), 
+                                                   tf.where(sentence_lengths_1d > 0)[:, 0])
+                sentence_embedding = tf.matmul(tf.transpose(valid_sentence_mapping), sentence_embedding)
+                
             # reshape to: batch_size x (1+num_sentence) x sentence_embed_size
             sentence_embedding = tf.reshape(sentence_embedding, (batch_size, -1, self.sentence_embed_size))
 
@@ -834,22 +872,49 @@ class ReadingComprehensionModel:
 
     def episode_iter(self, data_set, episode_size=None, shuffle=True, max_input_len=None, keep_invalid=True):
         """Generate batch vec_data. """
-        if shuffle:
-            random.shuffle(data_set)
         num_sample = len(data_set)
         if episode_size is None:
             episode_size = self.batch_size
         elif episode_size == -1:
             episode_size = num_sample
-        num_episode = int((num_sample - 1) / episode_size) + 1
+
+        # separate the dataset by single-sentence and multi-sentence context, and make sure each batch only contain one
+        # of these two types, in order to avoid too much memory consumption when doing sentence embedding processing.
+        num_sentences = np.array([len(item.sent_spans) for item in data_set])
+
+        # subset for single sentence data
+        data_set_1_indices = np.where(num_sentences == 1)[0]
+        if shuffle:
+            np.random.shuffle(data_set_1_indices)
+        num_batch_1 = int((len(data_set_1_indices) - 1) / episode_size) + 1
+        data_set_1_indices = np.hstack([data_set_1_indices,
+                                        -np.ones(num_batch_1*episode_size - len(data_set_1_indices), dtype=np.int32)])
+        data_set_1_indices = np.reshape(data_set_1_indices, (num_batch_1, episode_size))
+
+        # subset for multiple sentence data
+        data_set_2_indices = np.where(num_sentences > 1)[0]
+        if shuffle:
+            np.random.shuffle(data_set_2_indices)
+        num_batch_2 = int((len(data_set_2_indices) - 1) / episode_size) + 1
+        data_set_2_indices = np.hstack([data_set_2_indices,
+                                        -np.ones(num_batch_2*episode_size - len(data_set_2_indices), dtype=np.int32)])
+        data_set_2_indices = np.reshape(data_set_2_indices, (num_batch_2, episode_size))
+
+        data_set_indices = np.vstack([data_set_1_indices, data_set_2_indices])
+
+        num_episode = num_batch_1 + num_batch_2
+
+        if shuffle:
+            batch_indices = np.random.permutation(num_episode)
+        else:
+            batch_indices = np.arange(num_episode)
 
         # 0 corresponds to [CLS] token for BERT tokenizer
         IGNORE_INDEX = 0
         for i in range(num_episode):
-            start_id = i * episode_size
-            end_id = min((i + 1) * episode_size, num_sample)
-            cur_bsz = end_id - start_id
-            cur_batch = data_set[start_id:end_id]
+            cur_batch = [data_set[idx] for idx in data_set_indices[batch_indices[i]] if idx >= 0]
+            cur_bsz = len(cur_batch)
+
             cur_batch.sort(key=lambda x: sum(x.doc_input_mask), reverse=True)
 
             ids = []

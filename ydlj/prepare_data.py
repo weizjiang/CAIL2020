@@ -141,8 +141,10 @@ def combine_data_set():
 
 
 def generate_dev_result():
-    dev_data_file = r'data\dev.json'
-    dev_result_file = r'data\dev_result.json'
+    # dev_data_file = r'data\dev_small.json'
+    # dev_result_file = r'data\dev_small_result.json'
+    dev_data_file = r'data\dev_big.json'
+    dev_result_file = r'data\dev_big_result.json'
 
     with open(dev_data_file, 'r', encoding='utf-8') as f_in:
         dev_date = json.load(f_in)
@@ -657,9 +659,9 @@ if __name__ == '__main__':
 
     # combine_support_facts()
 
-    combine_data_set()
+    # combine_data_set()
 
-    # generate_dev_result()
+    generate_dev_result()
 
     # convert_cail2019_data(dataset='train', separate_paragraph=True)
 
