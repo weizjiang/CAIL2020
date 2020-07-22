@@ -659,9 +659,9 @@ if __name__ == '__main__':
 
     # combine_support_facts()
 
-    # combine_data_set()
+    combine_data_set()
 
-    generate_dev_result()
+    # generate_dev_result()
 
     # convert_cail2019_data(dataset='train', separate_paragraph=True)
 
@@ -669,7 +669,7 @@ if __name__ == '__main__':
 
     # augment_data_single_hop()
 
-    # augment_data_multi_hop()
+    # augment_data_multi_hop(num_delete=7, num_shuffle=7)
 
     # generate_test_file()
 

@@ -479,7 +479,11 @@ class ReadingComprehensionModel:
 
         # if False, remove null sentences when deriving sentence embeddings.
         # only valid when sentence_token_embedding_use_full_dimension is False
-        sentence_token_embedding_with_null = False
+        # It's not working properly, causing error: "Could not read from TensorArray index 0.  Furthermore, the element
+        # shape is not fully defined: [?,768].  It is possible you are working with a resizeable TensorArray and stop_
+        # gradients is not allowing the gradients to be written.  If you set the full element_shape property on the
+        # forward TensorArray, the proper all-zeros tensor will be returned instead of incurring this error."
+        sentence_token_embedding_with_null = True
 
         if sentence_token_embedding_use_full_dimension:  # or self.sentence_embedding_type.endswith('PoolDense'):
             # represent each sentence's token embedding at full demenstion (input_length)
