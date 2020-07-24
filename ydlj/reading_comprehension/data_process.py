@@ -376,13 +376,16 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length, max_query_
             sentence_spans.append((sent_start_position, sent_end_position)) 
 
         for entity_span in example.entity_start_end_position:
-            if entity_span[1] >= len(orig_to_tok_index):
-                continue
             if entity_span[0] == -1:
                 # entities in query
+                if entity_span[2] >= len(query_to_tok_index):
+                    continue
                 entity_start_position = query_to_tok_index[entity_span[1]]
                 entity_end_position = query_to_tok_index[entity_span[2]]
             else:
+                # entities in context
+                if entity_span[2] >= len(orig_to_tok_index):
+                    continue
                 entity_start_position = orig_to_tok_index[entity_span[1]]
                 entity_end_position = orig_to_tok_back_index[entity_span[2]]
             entity_spans.append((entity_span[0], entity_start_position, entity_end_position))
@@ -531,9 +534,14 @@ if __name__ == '__main__':
     args = parser.parse_args()
     tokenizer = tokenization.FullTokenizer(vocab_file=os.path.join(args.tokenizer_path, 'vocab.txt'),
                                            do_lower_case=True)
-    examples = read_examples(full_file=args.full_data)
-    with gzip.open(args.example_output, 'wb') as fout:
-        pickle.dump(examples, fout)
+
+    if os.path.isfile(args.example_output):
+        with gzip.open(args.example_output, 'rb') as f:
+            examples = pickle.load(f)
+    else:
+        examples = read_examples(full_file=args.full_data)
+        with gzip.open(args.example_output, 'wb') as fout:
+            pickle.dump(examples, fout)
 
     features = convert_examples_to_features(examples, tokenizer, max_seq_length=args.max_seq_length,
                                             max_query_length=50)
