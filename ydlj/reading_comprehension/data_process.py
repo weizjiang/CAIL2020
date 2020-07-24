@@ -2,6 +2,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import sys
 import argparse
 import json
 import gzip
@@ -509,7 +511,8 @@ def _improve_answer_span(doc_tokens, input_start, input_end, tokenizer,
 
 
 if __name__ == '__main__':
-    from transformers import BertTokenizer
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../libs'))
+    from bert import tokenization
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--example_output", required=True, type=str)
@@ -526,7 +529,8 @@ if __name__ == '__main__':
     parser.add_argument('--tokenizer_path', type=str, required=True)
 
     args = parser.parse_args()
-    tokenizer = BertTokenizer.from_pretrained(args.tokenizer_path)
+    tokenizer = tokenization.FullTokenizer(vocab_file=os.path.join(args.tokenizer_path, 'vocab.txt'),
+                                           do_lower_case=True)
     examples = read_examples(full_file=args.full_data)
     with gzip.open(args.example_output, 'wb') as fout:
         pickle.dump(examples, fout)
