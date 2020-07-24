@@ -9,14 +9,14 @@ outfile = "../result/result.json"
 
 
 def main():
-    RCModel = ReadingComprehensionModel(model_path=os.path.abspath('./checkpoints/rc_20200716-102909'),
+    RCModel = ReadingComprehensionModel(model_path=os.path.abspath('./checkpoints/rc_20200723-211344'),
                                         model_selection='B')
 
     examples = read_examples(full_file=os.path.abspath(infile))
     features = convert_examples_to_features(examples, RCModel.bert_tokenizer, max_seq_length=512, max_query_length=50)
 
     RCModel.predict(examples=examples, features=features, batch_size=32, test_per_sample=False,
-                    support_fact_threshold=0.2, restrict_answer_span=True, result_file=os.path.abspath(outfile))
+                    support_fact_threshold=0.5, restrict_answer_span=True, result_file=os.path.abspath(outfile))
     print('Done.')
 
 
