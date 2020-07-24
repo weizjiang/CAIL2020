@@ -52,6 +52,7 @@ class ReadingComprehensionModel:
     def initialize_config(self, config={}):
         self.max_input_len = config.get('max_input_len', 512)  # the default max input length for padding
         self.max_num_sentence = config.get('max_num_sentence', 50)
+        self.max_num_entity = config.get('max_num_entity', 100)
         self.max_answer_len = config.get('max_answer_len', 50)
         self.restrict_answer_span = config.get('restrict_answer_span', False)
         self.support_fact_threshold = config.get('support_fact_threshold', 0.5)
@@ -172,9 +173,12 @@ class ReadingComprehensionModel:
             self.input_span_start = tf.placeholder(tf.int32, shape=[None], name="input_span_start")
             # shape: batch_size, token index
             self.input_span_end = tf.placeholder(tf.int32, shape=[None], name="input_span_end")
-            # shape: batch_size x input_length x num_sentence
+            # shape: batch_size x input_length x (num_sentence + num_entity)
             self.input_sentence_mapping = tf.placeholder(tf.float32, shape=[None, None, None],
                                                          name="input_sentence_mapping")
+            # shape: batch_size x (1 + num_sentence + num_entity) x (1 + num_sentence + num_entity)
+            self.input_sent_entity_mapping = tf.placeholder(tf.float32, shape=[None, None, None],
+                                                            name="input_sent_entity_mapping")
             # shape: batch_size x num_sentence
             self.input_support_facts = tf.placeholder(tf.float32, shape=[None, None], name="input_support_facts")
             # shape: bool scaler
@@ -437,10 +441,13 @@ class ReadingComprehensionModel:
     def build_graph(self):
         batch_size = tf.shape(self.input_sentence)[0]
         input_len = tf.shape(self.input_sentence)[1]
-        num_sentence = tf.shape(self.input_sentence_mapping)[2]
+        num_sentence = tf.shape(self.input_support_facts)[1]
+
+        # num_sent_entity = 1 + num_sentence + num_entity
+        num_sent_entity = tf.shape(self.input_sent_entity_mapping)[1]
 
         # decrease the logits for padding and query tokens
-        contex_sentences_mask = tf.reduce_sum(self.input_sentence_mapping, axis=2)
+        contex_sentences_mask = tf.reduce_sum(self.input_sentence_mapping[:, :, :num_sentence], axis=2)
 
         # for [CLS] token
         first_token_mask = tf.cast(tf.range(input_len) < 1, tf.float32) + tf.zeros([batch_size, input_len])
@@ -453,7 +460,7 @@ class ReadingComprehensionModel:
         token_embedding = self.token_embedding_layer(self.input_sentence, self.input_mask)
 
         # --------------------------------------------------------------------------------------------------------------
-        # sentence embedding layer
+        # sentence (and entity) embedding layer
 
         # query sentence length, including [CLS] token, excluding 2 [SEP] tokens
         query_sentence_length = tf.cast(tf.reduce_sum(self.input_mask - contex_sentences_mask, axis=1, keepdims=True),
@@ -462,11 +469,9 @@ class ReadingComprehensionModel:
         query_mask = query_mask - first_token_mask
 
         # sentence-token mapping including query and context sentences
-        # batch_size x input_length x (1+num_sentence)
-        all_sentence_mapping = tf.concat([tf.expand_dims(query_mask, axis=2),
-                                          tf.cast(self.input_sentence_mapping, tf.float32)],
-                                         axis=2)
-        # batch_size x (1+num_sentence)
+        # batch_size x input_length x (1+num_sentence+num_entity)
+        all_sentence_mapping = tf.concat([tf.expand_dims(query_mask, axis=2), self.input_sentence_mapping], axis=2)
+        # batch_size x (1+num_sentence+num_entity)
         all_sentence_lengths = tf.cast(tf.reduce_sum(all_sentence_mapping, axis=1), tf.int32)
 
         sentence_lengths_1d = tf.reshape(all_sentence_lengths, (-1, 1))
@@ -491,12 +496,12 @@ class ReadingComprehensionModel:
             # And for BiLSTM, this doens't work, since it requires the real tokens to start at the begining.
             # For CNN, it's not using sentence mask explictly.
 
-            # batch_size x input_length x (1+num_sentence) x hidden_size
+            # batch_size x input_length x (1+num_sentence+num_entity) x hidden_size
             sentence_token_embedding = tf.matmul(tf.expand_dims(all_sentence_mapping, 3),
                                                  tf.expand_dims(token_embedding, 2))
 
             if not self.sentence_embedding_type.endswith('PoolDense'):
-                # reshape to: (batch_size*(1+num_sentence)) x input_length x hidden_size
+                # reshape to: (batch_size*(1+num_sentence+num_entity)) x input_length x hidden_size
                 sentence_token_embedding = tf.reshape(tf.transpose(sentence_token_embedding, perm=[0, 2, 1, 3]),
                                                       (-1, input_len, self.word_embed_size))
                 sentence_mask = tf.reshape(tf.transpose(all_sentence_mapping, perm=[0, 2, 1]), (-1, input_len))
@@ -513,12 +518,12 @@ class ReadingComprehensionModel:
 
                 def sentence_loop_cond(sentence_idx, sentence_ary):
                     if sentence_token_embedding_with_null:
-                        return tf.less(sentence_idx, num_sentence + 1)
+                        return tf.less(sentence_idx, num_sent_entity)
                     else:
                         # # logical_and cannot do short-cut?
-                        # return tf.logical_and(tf.less(sentence_idx, num_sentence+1),
+                        # return tf.logical_and(tf.less(sentence_idx, num_sent_entity),
                         #                       tf.greater(all_sentence_lengths[sample_idx, sentence_idx], 0))
-                        return tf.cond(tf.less(sentence_idx, num_sentence+1),
+                        return tf.cond(tf.less(sentence_idx, num_sent_entity),
                                        lambda: tf.greater(all_sentence_lengths[sample_idx, sentence_idx], 0),
                                        lambda: tf.constant(False, tf.bool))
 
@@ -540,7 +545,7 @@ class ReadingComprehensionModel:
                     return sentence_idx + 1, sentence_ary.write(sentence_idx, sample_sentence_token_embedding)
 
                 if sentence_token_embedding_with_null:
-                    sentence_embedding_ary = tf.TensorArray(tf.float32, size=num_sentence+1, infer_shape=True)
+                    sentence_embedding_ary = tf.TensorArray(tf.float32, size=num_sent_entity, infer_shape=True)
                 else:
                     sentence_embedding_ary = tf.TensorArray(tf.float32, size=2, dynamic_size=True, infer_shape=True)
 
@@ -572,15 +577,18 @@ class ReadingComprehensionModel:
 
             if sentence_token_embedding_with_null:
                 sentence_token_embedding = embedding_ary.stack()
-                # (batch_size*(1+num_sentence)) x max_sent_len x hidden_size
+                # (batch_size*(1+num_sentence+num_entity)) x max_sent_len x hidden_size
                 sentence_token_embedding = tf.reshape(
-                    sentence_token_embedding, (batch_size * (num_sentence + 1), max_sent_len, self.word_embed_size))
+                    sentence_token_embedding, (batch_size * num_sent_entity, max_sent_len, self.word_embed_size))
             else:
                 # total_num_sentence_in_batch x max_sent_len x hidden_size
                 sentence_token_embedding = embedding_ary.concat()
 
                 sentence_mask = tf.gather(sentence_mask, tf.where(sentence_lengths_1d > 0)[:, 0])
 
+        self.sentence_token_embedding = sentence_token_embedding  # debug
+        self.num_sent_entity = num_sent_entity
+        self.sentence_mask = sentence_mask
         sentence_embedding = self.sentence_embedding_model(sentence_token_embedding, sentence_mask,
                                                            embedding_type=self.sentence_embedding_type,
                                                            embedding_size=self.sentence_embed_size,
@@ -589,11 +597,11 @@ class ReadingComprehensionModel:
         if sentence_embedding.get_shape().ndims == 2:
             if not sentence_token_embedding_with_null:
                 # restore to full size
-                valid_sentence_mapping = tf.gather(tf.eye(batch_size * (num_sentence + 1)), 
+                valid_sentence_mapping = tf.gather(tf.eye(batch_size * num_sent_entity),
                                                    tf.where(sentence_lengths_1d > 0)[:, 0])
                 sentence_embedding = tf.matmul(tf.transpose(valid_sentence_mapping), sentence_embedding)
                 
-            # reshape to: batch_size x (1+num_sentence) x sentence_embed_size
+            # reshape to: batch_size x (1+num_sentence+num_entity) x sentence_embed_size
             sentence_embedding = tf.reshape(sentence_embedding, (batch_size, -1, self.sentence_embed_size))
 
         # --------------------------------------------------------------------------------------------------------------
@@ -601,16 +609,16 @@ class ReadingComprehensionModel:
 
         if self.support_fact_reasoning_model == 'Transformer':
             with tf.variable_scope("support_fact_model", reuse=tf.AUTO_REUSE):
-                # batch_size x (1+num_sentence)
-                all_sentences = tf.reduce_any(all_sentence_mapping > 0.5, axis=1)
-                # batch_size x (1+num_sentence) x (1+num_sentence)
-                sentence_attention_mask = tf.logical_and(tf.expand_dims(all_sentences, axis=2),
-                                                         tf.expand_dims(all_sentences, axis=1))
+                # # batch_size x (1+num_sentence+num_entity)
+                # all_sentences = tf.reduce_any(all_sentence_mapping > 0.5, axis=1)
+                # # batch_size x (1+num_sentence+num_entity) x (1+num_sentence+num_entity)
+                # sentence_attention_mask = tf.logical_and(tf.expand_dims(all_sentences, axis=2),
+                #                                          tf.expand_dims(all_sentences, axis=1))
 
                 support_fact_embedding = bert_modeling.transformer_model(
                     sentence_embedding,
                     is_training=self.is_training,
-                    attention_mask=sentence_attention_mask,
+                    attention_mask=self.input_sent_entity_mapping,
                     hidden_size=self.sentence_embed_size,
                     num_hidden_layers=self.support_fact_transformer['num_hidden_layers'],
                     num_attention_heads=self.support_fact_transformer['num_attention_heads'],
@@ -629,9 +637,9 @@ class ReadingComprehensionModel:
         # --------------------------------------------------------------------------------------------------------------
         # support fact prediction layer
 
-        # exclude query sentence for support fact logit calculation
+        # exclude query sentence for support fact logit calculation, also excluding entities
         support_fact_logits = tf.layers.dense(
-            support_fact_embedding[:, 1:, :],
+            support_fact_embedding[:, 1:num_sentence+1, :],
             1,
             activation=None,
             kernel_initializer=tf.truncated_normal_initializer(mean=0, stddev=0.02)
@@ -884,7 +892,7 @@ class ReadingComprehensionModel:
 
         # separate the dataset by single-sentence and multi-sentence context, and make sure each batch only contain one
         # of these two types, in order to avoid too much memory consumption when doing sentence embedding processing.
-        num_sentences = np.array([len(item.sent_spans) for item in data_set])
+        num_sentences = np.array([sum([1 for span in item.sent_spans if len(span) == 2]) for item in data_set])
 
         # subset for single sentence data
         data_set_1_indices = np.where(num_sentences == 1)[0]
@@ -923,14 +931,23 @@ class ReadingComprehensionModel:
 
             ids = []
             max_sent_cnt = 0
+            max_sent_entity_cnt = 0
 
             context_idxs = np.zeros((cur_bsz, self.max_input_len), dtype=np.int32)
             context_mask = np.zeros((cur_bsz, self.max_input_len), dtype=np.int32)
             segment_idxs = np.zeros((cur_bsz, self.max_input_len), dtype=np.int32)
 
             query_mapping = np.zeros((cur_bsz, self.max_input_len), dtype=np.int32)
-            start_mapping = np.zeros((cur_bsz, self.max_num_sentence, self.max_input_len), dtype=np.int32)
-            all_mapping = np.zeros((cur_bsz, self.max_input_len, self.max_num_sentence), dtype=np.int32)
+            # start postions for context senteces and all entities
+            start_mapping = np.zeros((cur_bsz, self.max_num_sentence + self.max_num_entity, self.max_input_len),
+                                     dtype=np.int32)
+            # postions for context senteces and all entities
+            all_mapping = np.zeros((cur_bsz, self.max_input_len, self.max_num_sentence + self.max_num_entity),
+                                   dtype=np.int32)
+            # connection among all sentences (including query sentence) and entities
+            # the first index for dimension 1 and 2 corresponds to query sentence
+            sent_entity_mapping = np.zeros((cur_bsz, self.max_num_sentence + self.max_num_entity + 1,
+                                            self.max_num_sentence + self.max_num_entity + 1), dtype=np.int32)
 
             # Label tensor
             y1 = np.zeros(cur_bsz, dtype=np.int32)
@@ -947,7 +964,11 @@ class ReadingComprehensionModel:
                 context_mask[sample_idx] = case.doc_input_mask
                 segment_idxs[sample_idx] = case.doc_segment_ids
 
-                for j in range(case.sent_spans[0][0] - 1):
+                # separate sentences and entities
+                sent_spans = [span for span in case.sent_spans if len(span) == 2]
+                entity_spans = [span for span in case.sent_spans if len(span) == 3]
+
+                for j in range(sent_spans[0][0] - 1):
                     # including [CLS], excluding [SEP]
                     query_mapping[sample_idx, j] = 1
 
@@ -982,7 +1003,7 @@ class ReadingComprehensionModel:
                     y2[sample_idx] = IGNORE_INDEX
                     q_type[sample_idx] = 3
 
-                for j, sent_span in enumerate(case.sent_spans[:self.max_num_sentence]):
+                for j, sent_span in enumerate(sent_spans[:self.max_num_sentence]):
                     is_sp_flag = j in case.sup_fact_ids
                     start, end = sent_span
                     if start < end:
@@ -992,13 +1013,28 @@ class ReadingComprehensionModel:
                         all_mapping[sample_idx, start:end + 1, j] = 1
                         start_mapping[sample_idx, j, start] = 1
 
+                # all sentences are connected, including query sentence
+                sent_entity_mapping[sample_idx, :j+2, :j+2] = 1
+
+                # concatenate entity mapping to sentence mapping
+                for entity_span in entity_spans[:self.max_num_entity]:
+                    j += 1
+                    sentence_id, start, end = entity_span
+                    if start <= end:
+                        all_mapping[sample_idx, start:end + 1, j] = 1
+                        start_mapping[sample_idx, j, start] = 1
+                        sent_entity_mapping[sample_idx, sentence_id + 1, j + 1] = 1
+                        sent_entity_mapping[sample_idx, j + 1, sentence_id + 1] = 1
+
                 if q_type[sample_idx] != 3 and np.sum(is_support[sample_idx]) == 0:
                     # set to invalid if support fact is missing
                     is_valid = False
 
                 if is_valid or keep_invalid:
                     ids.append(case.qas_id)
-                    max_sent_cnt = max(max_sent_cnt, len(case.sent_spans))
+                    max_sent_cnt = max(max_sent_cnt, len(sent_spans))
+                    # count context sentence and all entities, not counting query sentence
+                    max_sent_entity_cnt = max(max_sent_entity_cnt, j+1)
                     valid_sample_idx.append(sample_idx)
 
             if len(valid_sample_idx) == 0:
@@ -1017,9 +1053,9 @@ class ReadingComprehensionModel:
                 'y2': y2[valid_idx],
                 'ids': ids,
                 'q_type': q_type[valid_idx],
-                'start_mapping': start_mapping[valid_idx, :max_sent_cnt, :max_c_len],
-                'all_mapping': all_mapping[valid_idx, :max_c_len, :max_sent_cnt],
-
+                'start_mapping': start_mapping[valid_idx, :max_sent_entity_cnt, :max_c_len],
+                'all_mapping': all_mapping[valid_idx, :max_c_len, :max_sent_entity_cnt],
+                'sent_entity_mapping': sent_entity_mapping[valid_idx, :max_sent_entity_cnt+1, :max_sent_entity_cnt+1],
                 'is_support': is_support[valid_idx, :max_sent_cnt],
             }
 
@@ -1067,6 +1103,7 @@ class ReadingComprehensionModel:
                             self.input_span_start: batch['y1'],
                             self.input_span_end: batch['y2'],
                             self.input_sentence_mapping: batch['all_mapping'],
+                            self.input_sent_entity_mapping: batch['sent_entity_mapping'],
                             self.input_support_facts: batch['is_support'],
                             self.is_training: True
                         }
@@ -1320,6 +1357,7 @@ class ReadingComprehensionModel:
             self.input_span_start = graph.get_tensor_by_name("input_span_start:0")
             self.input_span_end = graph.get_tensor_by_name("input_span_end:0")
             self.input_sentence_mapping = graph.get_tensor_by_name("input_sentence_mapping:0")
+            self.input_sent_entity_mapping = graph.get_tensor_by_name("input_sent_entity_mapping:0")
             self.input_support_facts = graph.get_tensor_by_name("input_support_facts:0")
             self.is_training = graph.get_tensor_by_name("is_training:0")
 
@@ -1380,6 +1418,7 @@ class ReadingComprehensionModel:
                     self.input_span_start: val_batch['y1'],
                     self.input_span_end: val_batch['y2'],
                     self.input_sentence_mapping: val_batch['all_mapping'],
+                    self.input_sent_entity_mapping: val_batch['sent_entity_mapping'],
                     self.input_support_facts: val_batch['is_support'],
                     self.is_training: False
                 }

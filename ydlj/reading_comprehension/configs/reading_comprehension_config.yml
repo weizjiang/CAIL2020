@@ -12,19 +12,19 @@ DataSet: {
   TrainPercentage: -1,
 
   # train set example file path
-#  TrainSetExampleFile: '../data/data_correct_span/train_example.pkl.gz',
+#  TrainSetExampleFile: '../data/dev_debug_example.pkl.gz',
   TrainSetExampleFile: '../data/data_combine2019_1sentence/train_example.pkl.gz',
 
   # train set reature file path
-#  TrainSetFeatureFile: '../data/data_correct_span/train_feature.pkl.gz',
+#  TrainSetFeatureFile: '../data/dev_debug_feature.pkl.gz',
   TrainSetFeatureFile: '../data/data_combine2019_1sentence/train_feature.pkl.gz',
 
   # dev set example file path
-#  DevSetExampleFile: '../data/data_correct_span/dev_example.pkl.gz',
+#  DevSetExampleFile: '../data/dev_debug_example.pkl.gz',
   DevSetExampleFile: '../data/data_combine2019_1sentence/dev_example.pkl.gz',
 
   # dev set reature file path
-#  DevSetFeatureFile: '../data/data_correct_span/dev_feature.pkl.gz',
+#  DevSetFeatureFile: '../data/dev_debug_feature.pkl.gz',
   DevSetFeatureFile: '../data/data_combine2019_1sentence/dev_feature.pkl.gz',
   }
 
@@ -296,6 +296,9 @@ max_input_len: 512
 
 # maximum number of sentences in one example
 max_num_sentence: 50
+
+# maximum number of entities in one example
+max_num_entity: 100
 
 # maximum answer length, in tokens. Only impact prediction/evaluation.
 max_answer_len: 50
