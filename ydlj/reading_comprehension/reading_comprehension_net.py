@@ -176,7 +176,7 @@ class ReadingComprehensionModel:
             # shape: batch_size x input_length x (num_sentence + num_entity)
             self.input_sentence_mapping = tf.placeholder(tf.float32, shape=[None, None, None],
                                                          name="input_sentence_mapping")
-            # shape: batch_size x (1 + num_sentence + num_entity) x (1 + num_sentence + num_entity)
+            # shape: batch_size x (1 + num_sentence) x num_entity
             self.input_sent_entity_mapping = tf.placeholder(tf.float32, shape=[None, None, None],
                                                             name="input_sent_entity_mapping")
             # shape: batch_size x num_sentence
@@ -441,13 +441,15 @@ class ReadingComprehensionModel:
     def build_graph(self):
         batch_size = tf.shape(self.input_sentence)[0]
         input_len = tf.shape(self.input_sentence)[1]
-        num_sentence = tf.shape(self.input_support_facts)[1]
+        # number of context sentences, not including query sentence
+        num_sentence = tf.shape(self.input_sent_entity_mapping)[1] - 1
 
-        # num_sent_entity = 1 + num_sentence + num_entity
-        num_sent_entity = tf.shape(self.input_sent_entity_mapping)[1]
+        num_entity = tf.shape(self.input_sent_entity_mapping)[2]
+        num_sent_entity = 1 + num_sentence + num_entity
 
-        # decrease the logits for padding and query tokens
-        contex_sentences_mask = tf.reduce_sum(self.input_sentence_mapping[:, :, :num_sentence], axis=2)
+        # context text mask
+        contex_sentences_mask = tf.cast(tf.reduce_any(self.input_sentence_mapping[:, :, :num_sentence] > 0.5, axis=2),
+                                        tf.float32)
 
         # for [CLS] token
         first_token_mask = tf.cast(tf.range(input_len) < 1, tf.float32) + tf.zeros([batch_size, input_len])
@@ -649,7 +651,8 @@ class ReadingComprehensionModel:
         support_fact_logits = tf.squeeze(support_fact_logits, axis=2)
 
         # Mask the real sentences. For non sentence position, the cross-entropy will be 0.
-        valid_sentence_mask = tf.cast(tf.reduce_any(self.input_sentence_mapping > 0.5, axis=1), tf.float32)
+        valid_sentence_mask = tf.cast(tf.reduce_any(self.input_sentence_mapping[:, :, :num_sentence] > 0.5, axis=1),
+                                      tf.float32)
         support_fact_logits = support_fact_logits - 100 * (1 - valid_sentence_mask)
 
         self.support_fact_prob = tf.sigmoid(support_fact_logits, name='support_fact_prob')
@@ -931,7 +934,7 @@ class ReadingComprehensionModel:
 
             ids = []
             max_sent_cnt = 0
-            max_sent_entity_cnt = 0
+            max_entity_cnt = 0
 
             context_idxs = np.zeros((cur_bsz, self.max_input_len), dtype=np.int32)
             context_mask = np.zeros((cur_bsz, self.max_input_len), dtype=np.int32)
@@ -944,10 +947,12 @@ class ReadingComprehensionModel:
             # postions for context senteces and all entities
             all_mapping = np.zeros((cur_bsz, self.max_input_len, self.max_num_sentence + self.max_num_entity),
                                    dtype=np.int32)
-            # connection among all sentences (including query sentence) and entities
-            # the first index for dimension 1 and 2 corresponds to query sentence
-            sent_entity_mapping = np.zeros((cur_bsz, self.max_num_sentence + self.max_num_entity + 1,
-                                            self.max_num_sentence + self.max_num_entity + 1), dtype=np.int32)
+
+            entity_start_mapping = np.zeros((cur_bsz, self.max_num_entity, self.max_input_len), dtype=np.int32)
+            entity_mapping = np.zeros((cur_bsz, self.max_input_len, self.max_num_entity), dtype=np.int32)
+            # connection between sentences (including query sentence) and entities
+            # the first index for dimension 1 corresponds to query sentence
+            sent_entity_mapping = np.zeros((cur_bsz, 1 + self.max_num_sentence, self.max_num_entity), dtype=np.int32)
 
             # Label tensor
             y1 = np.zeros(cur_bsz, dtype=np.int32)
@@ -1013,18 +1018,16 @@ class ReadingComprehensionModel:
                         all_mapping[sample_idx, start:end + 1, j] = 1
                         start_mapping[sample_idx, j, start] = 1
 
-                # all sentences are connected, including query sentence
-                sent_entity_mapping[sample_idx, :j+2, :j+2] = 1
+                # # all sentences are connected, including query sentence
+                # sent_entity_mapping[sample_idx, :j+2, :j+2] = 1
 
-                # concatenate entity mapping to sentence mapping
-                for entity_span in entity_spans[:self.max_num_entity]:
-                    j += 1
+                # entity mapping
+                for entity_idx, entity_span in enumerate(entity_spans[:self.max_num_entity]):
                     sentence_id, start, end = entity_span
-                    if start <= end:
-                        all_mapping[sample_idx, start:end + 1, j] = 1
-                        start_mapping[sample_idx, j, start] = 1
-                        sent_entity_mapping[sample_idx, sentence_id + 1, j + 1] = 1
-                        sent_entity_mapping[sample_idx, j + 1, sentence_id + 1] = 1
+                    if sentence_id <= j and start <= end:
+                        entity_mapping[sample_idx, start:end + 1, entity_idx] = 1
+                        entity_start_mapping[sample_idx, entity_idx, start] = 1
+                        sent_entity_mapping[sample_idx, sentence_id + 1, entity_idx] = 1
 
                 if q_type[sample_idx] != 3 and np.sum(is_support[sample_idx]) == 0:
                     # set to invalid if support fact is missing
@@ -1032,9 +1035,8 @@ class ReadingComprehensionModel:
 
                 if is_valid or keep_invalid:
                     ids.append(case.qas_id)
-                    max_sent_cnt = max(max_sent_cnt, len(sent_spans))
-                    # count context sentence and all entities, not counting query sentence
-                    max_sent_entity_cnt = max(max_sent_entity_cnt, j+1)
+                    max_sent_cnt = max(max_sent_cnt, j+1)
+                    max_entity_cnt = max(max_entity_cnt, entity_idx+1)
                     valid_sample_idx.append(sample_idx)
 
             if len(valid_sample_idx) == 0:
@@ -1053,9 +1055,13 @@ class ReadingComprehensionModel:
                 'y2': y2[valid_idx],
                 'ids': ids,
                 'q_type': q_type[valid_idx],
-                'start_mapping': start_mapping[valid_idx, :max_sent_entity_cnt, :max_c_len],
-                'all_mapping': all_mapping[valid_idx, :max_c_len, :max_sent_entity_cnt],
-                'sent_entity_mapping': sent_entity_mapping[valid_idx, :max_sent_entity_cnt+1, :max_sent_entity_cnt+1],
+                'start_mapping': np.concatenate([start_mapping[valid_idx, :max_sent_cnt, :max_c_len],
+                                                 entity_start_mapping[valid_idx, :max_entity_cnt, :max_c_len]],
+                                                axis=1),
+                'all_mapping': np.concatenate([all_mapping[valid_idx, :max_c_len, :max_sent_cnt],
+                                               entity_mapping[valid_idx, :max_c_len, :max_entity_cnt]],
+                                              axis=2),
+                'sent_entity_mapping': sent_entity_mapping[valid_idx, :max_sent_cnt+1, :max_entity_cnt],
                 'is_support': is_support[valid_idx, :max_sent_cnt],
             }
 
