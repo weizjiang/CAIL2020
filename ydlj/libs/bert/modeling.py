@@ -764,7 +764,8 @@ def transformer_model(input_tensor,
                       hidden_dropout_prob=0.1,
                       attention_probs_dropout_prob=0.1,
                       initializer_range=0.02,
-                      do_return_all_layers=False):
+                      do_return_all_layers=False,
+                      share_layer_weights=False):
   """Multi-headed, multi-layer Transformer from "Attention is All You Need".
 
   This is almost an exact implementation of the original Transformer encoder.
@@ -795,6 +796,7 @@ def transformer_model(input_tensor,
       normal).
     do_return_all_layers: Whether to also return all layers or just the final
       layer.
+    share_layer_weights: Whether to share weights for different layers
 
   Returns:
     float Tensor of shape [batch_size, seq_length, hidden_size], the final
@@ -828,7 +830,8 @@ def transformer_model(input_tensor,
 
   all_layer_outputs = []
   for layer_idx in range(num_hidden_layers):
-    with tf.variable_scope("layer_%d" % layer_idx):
+    layer_scope = "layer" if share_layer_weights else "layer_%d" % layer_idx
+    with tf.variable_scope(layer_scope):
       layer_input = prev_output
 
       with tf.variable_scope("attention"):

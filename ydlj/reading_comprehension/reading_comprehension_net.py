@@ -702,7 +702,8 @@ class ReadingComprehensionModel:
                     hidden_dropout_prob=self.support_fact_transformer['hidden_dropout_prob'],
                     attention_probs_dropout_prob=self.support_fact_transformer['attention_probs_dropout_prob'],
                     initializer_range=0.02,
-                    do_return_all_layers=False
+                    do_return_all_layers=False,
+                    share_layer_weights=self.support_fact_transformer['share_layer_weights']
                 )
 
         else:
@@ -788,7 +789,8 @@ class ReadingComprehensionModel:
                     hidden_dropout_prob=self.answer_span_transformer['hidden_dropout_prob'],
                     attention_probs_dropout_prob=self.answer_span_transformer['attention_probs_dropout_prob'],
                     initializer_range=0.02,
-                    do_return_all_layers=False
+                    do_return_all_layers=False,
+                    share_layer_weights=self.answer_span_transformer['share_layer_weights']
                 )
 
         else:
