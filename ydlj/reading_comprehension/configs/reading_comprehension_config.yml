@@ -166,6 +166,11 @@ support_fact_transformer: {
   share_layer_weights: true
 }
 
+# sentence-entity connection type
+# 'Full': all sentence and entities are fully connected
+# 'Tree': entities are only connected to the sentence it belongs to; no entity-to-entity connection
+sentence_entity_connect_type: 'Full'
+
 ################################################################################
 # answer type and span predition layer
 

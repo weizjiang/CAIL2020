@@ -169,6 +169,7 @@ class ReadingComprehensionModel:
 
         self.support_fact_reasoning_model = config.get('support_fact_reasoning_model', 'None')
         self.support_fact_transformer = config.get('support_fact_transformer', {})
+        self.sentence_entity_connect_type = config.get('sentence_entity_connect_type', 'Tree')
 
         self.support_fact_loss_all_samples = config.get('support_fact_loss_all_samples', True)
         self.support_fact_loss_type = config.get('support_fact_loss_type', 'Mean')
@@ -673,22 +674,28 @@ class ReadingComprehensionModel:
 
         if self.support_fact_reasoning_model == 'Transformer':
             with tf.variable_scope("support_fact_model", reuse=tf.AUTO_REUSE):
-                # batch_size x (1+num_sentence)
-                all_sentences = tf.reduce_any(all_sentence_mapping[:, :, :num_sentence+1] > 0.5, axis=1)
-                # all sententences are connected
-                # batch_size x (1+num_sentence) x (1+num_sentence)
-                sentence_attention_mask = tf.cast(tf.logical_and(tf.expand_dims(all_sentences, axis=2),
-                                                                 tf.expand_dims(all_sentences, axis=1)),
-                                                  tf.int32)
-                # entities are only connected to the sentence it belongs to.
-                # entities are not connected to entities
-                entity_attention_mask = tf.zeros([batch_size, num_entity, num_entity], dtype=tf.int32)
-                sentence_entity_attention_mask = tf.concat(
-                    [tf.concat([sentence_attention_mask, self.input_sent_entity_mapping], axis=2),
-                     tf.concat([tf.transpose(self.input_sent_entity_mapping, perm=[0, 2, 1]),
-                                entity_attention_mask], axis=2)],
-                    axis=1
-                )
+                if self.sentence_entity_connect_type == 'Full':
+                    # batch_size x (1+num_sentence+num_entity)
+                    all_sentences_entities = tf.reduce_any(all_sentence_mapping > 0.5, axis=1)
+                    sentence_entity_attention_mask = tf.logical_and(tf.expand_dims(all_sentences_entities, axis=2),
+                                                                    tf.expand_dims(all_sentences_entities, axis=1))
+                elif self.sentence_entity_connect_type == 'Tree':
+                    # batch_size x (1+num_sentence)
+                    all_sentences = tf.reduce_any(all_sentence_mapping[:, :, :num_sentence+1] > 0.5, axis=1)
+                    # all sententences are connected
+                    # batch_size x (1+num_sentence) x (1+num_sentence)
+                    sentence_attention_mask = tf.cast(tf.logical_and(tf.expand_dims(all_sentences, axis=2),
+                                                                     tf.expand_dims(all_sentences, axis=1)),
+                                                      tf.int32)
+                    # entities are only connected to the sentence it belongs to.
+                    # entities are not connected to entities
+                    entity_attention_mask = tf.zeros([batch_size, num_entity, num_entity], dtype=tf.int32)
+                    sentence_entity_attention_mask = tf.concat(
+                        [tf.concat([sentence_attention_mask, self.input_sent_entity_mapping], axis=2),
+                         tf.concat([tf.transpose(self.input_sent_entity_mapping, perm=[0, 2, 1]),
+                                    entity_attention_mask], axis=2)],
+                        axis=1
+                    )
 
                 support_fact_embedding = bert_modeling.transformer_model(
                     sentence_embedding,
