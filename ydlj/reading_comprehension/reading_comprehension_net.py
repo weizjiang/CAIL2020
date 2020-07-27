@@ -174,10 +174,10 @@ class ReadingComprehensionModel:
             # shape: batch_size, token index
             self.input_span_end = tf.placeholder(tf.int32, shape=[None], name="input_span_end")
             # shape: batch_size x input_length x (num_sentence + num_entity)
-            self.input_sentence_mapping = tf.placeholder(tf.float32, shape=[None, None, None],
+            self.input_sentence_mapping = tf.placeholder(tf.int32, shape=[None, None, None],
                                                          name="input_sentence_mapping")
             # shape: batch_size x (1 + num_sentence) x num_entity
-            self.input_sent_entity_mapping = tf.placeholder(tf.float32, shape=[None, None, None],
+            self.input_sent_entity_mapping = tf.placeholder(tf.int32, shape=[None, None, None],
                                                             name="input_sent_entity_mapping")
             # shape: batch_size x num_sentence
             self.input_support_facts = tf.placeholder(tf.float32, shape=[None, None], name="input_support_facts")
@@ -448,7 +448,7 @@ class ReadingComprehensionModel:
         num_sent_entity = 1 + num_sentence + num_entity
 
         # context text mask
-        contex_sentences_mask = tf.cast(tf.reduce_any(self.input_sentence_mapping[:, :, :num_sentence] > 0.5, axis=2),
+        contex_sentences_mask = tf.cast(tf.reduce_any(self.input_sentence_mapping[:, :, :num_sentence] > 0, axis=2),
                                         tf.float32)
 
         # for [CLS] token
@@ -470,9 +470,10 @@ class ReadingComprehensionModel:
         query_mask = tf.cast(tf.expand_dims(tf.range(input_len), axis=0) < query_sentence_length, tf.float32)
         query_mask = query_mask - first_token_mask
 
-        # sentence-token mapping including query and context sentences
+        # sentence-token mapping including query and context sentences (and entities)
         # batch_size x input_length x (1+num_sentence+num_entity)
-        all_sentence_mapping = tf.concat([tf.expand_dims(query_mask, axis=2), self.input_sentence_mapping], axis=2)
+        all_sentence_mapping = tf.concat([tf.expand_dims(query_mask, axis=2),
+                                          tf.cast(self.input_sentence_mapping, tf.float32)], axis=2)
         # batch_size x (1+num_sentence+num_entity)
         all_sentence_lengths = tf.cast(tf.reduce_sum(all_sentence_mapping, axis=1), tf.int32)
 
@@ -611,16 +612,27 @@ class ReadingComprehensionModel:
 
         if self.support_fact_reasoning_model == 'Transformer':
             with tf.variable_scope("support_fact_model", reuse=tf.AUTO_REUSE):
-                # # batch_size x (1+num_sentence+num_entity)
-                # all_sentences = tf.reduce_any(all_sentence_mapping > 0.5, axis=1)
-                # # batch_size x (1+num_sentence+num_entity) x (1+num_sentence+num_entity)
-                # sentence_attention_mask = tf.logical_and(tf.expand_dims(all_sentences, axis=2),
-                #                                          tf.expand_dims(all_sentences, axis=1))
+                # batch_size x (1+num_sentence)
+                all_sentences = tf.reduce_any(all_sentence_mapping[:, :, :num_sentence+1] > 0.5, axis=1)
+                # all sententences are connected
+                # batch_size x (1+num_sentence) x (1+num_sentence)
+                sentence_attention_mask = tf.cast(tf.logical_and(tf.expand_dims(all_sentences, axis=2),
+                                                                 tf.expand_dims(all_sentences, axis=1)),
+                                                  tf.int32)
+                # entities are only connected to the sentence it belongs to.
+                # entities are not connected to entities
+                entity_attention_mask = tf.zeros([batch_size, num_entity, num_entity], dtype=tf.int32)
+                sentence_entity_attention_mask = tf.concat(
+                    [tf.concat([sentence_attention_mask, self.input_sent_entity_mapping], axis=2),
+                     tf.concat([tf.transpose(self.input_sent_entity_mapping, perm=[0, 2, 1]),
+                                entity_attention_mask], axis=2)],
+                    axis=1
+                )
 
                 support_fact_embedding = bert_modeling.transformer_model(
                     sentence_embedding,
                     is_training=self.is_training,
-                    attention_mask=self.input_sent_entity_mapping,
+                    attention_mask=sentence_entity_attention_mask,
                     hidden_size=self.sentence_embed_size,
                     num_hidden_layers=self.support_fact_transformer['num_hidden_layers'],
                     num_attention_heads=self.support_fact_transformer['num_attention_heads'],
@@ -651,7 +663,7 @@ class ReadingComprehensionModel:
         support_fact_logits = tf.squeeze(support_fact_logits, axis=2)
 
         # Mask the real sentences. For non sentence position, the cross-entropy will be 0.
-        valid_sentence_mask = tf.cast(tf.reduce_any(self.input_sentence_mapping[:, :, :num_sentence] > 0.5, axis=1),
+        valid_sentence_mask = tf.cast(tf.reduce_any(self.input_sentence_mapping[:, :, :num_sentence] > 0, axis=1),
                                       tf.float32)
         support_fact_logits = support_fact_logits - 100 * (1 - valid_sentence_mask)
 
@@ -1022,12 +1034,14 @@ class ReadingComprehensionModel:
                 # sent_entity_mapping[sample_idx, :j+2, :j+2] = 1
 
                 # entity mapping
+                num_entity = 0
                 for entity_idx, entity_span in enumerate(entity_spans[:self.max_num_entity]):
                     sentence_id, start, end = entity_span
                     if sentence_id <= j and start <= end:
                         entity_mapping[sample_idx, start:end + 1, entity_idx] = 1
                         entity_start_mapping[sample_idx, entity_idx, start] = 1
                         sent_entity_mapping[sample_idx, sentence_id + 1, entity_idx] = 1
+                        num_entity += 1
 
                 if q_type[sample_idx] != 3 and np.sum(is_support[sample_idx]) == 0:
                     # set to invalid if support fact is missing
@@ -1036,7 +1050,7 @@ class ReadingComprehensionModel:
                 if is_valid or keep_invalid:
                     ids.append(case.qas_id)
                     max_sent_cnt = max(max_sent_cnt, j+1)
-                    max_entity_cnt = max(max_entity_cnt, entity_idx+1)
+                    max_entity_cnt = max(max_entity_cnt, num_entity)
                     valid_sample_idx.append(sample_idx)
 
             if len(valid_sample_idx) == 0:
