@@ -24,6 +24,47 @@ from bert import modeling as bert_modeling
 from bert import optimization, tokenization, run_classifier
 
 
+def pooling(token_embedding, pool_type, keepdims=False):
+    """
+    for 2d input, pool along the the 1st dimension
+    for input dimension > 2, pool along the the 2nd dimension
+    :param token_embedding: batch_size x sentence_len x hidden_size, or sentence_len x hidden_size
+    :param pool_type: str
+    :param keepdims: bool
+    :return:
+    """
+
+    if token_embedding.get_shape().ndims <= 2:
+        pool_dimension = 0
+    else:
+        pool_dimension = 1
+
+    if pool_type == 'Max':
+        pool_out = tf.reduce_max(token_embedding, axis=pool_dimension, keepdims=keepdims)
+    elif pool_type == 'Avg':
+        pool_out = tf.reduce_mean(token_embedding, axis=pool_dimension, keepdims=keepdims)
+    elif pool_type == 'AvgMax':
+        pool_out = tf.concat([tf.reduce_mean(token_embedding, axis=pool_dimension, keepdims=keepdims),
+                              tf.reduce_max(token_embedding, axis=pool_dimension, keepdims=keepdims)],
+                             axis=-1)
+    elif pool_type == 'First':
+        # use the embedding of the first token only
+        # same as BERT model processing for classification, in which the first token is [cls].
+        if keepdims:
+            if pool_dimension == 0:
+                pool_out = token_embedding[0:1]
+            else:
+                pool_out = token_embedding[:, 0:1]
+        else:
+            if pool_dimension == 0:
+                pool_out = token_embedding[0]
+            else:
+                pool_out = token_embedding[:, 0]
+    else:
+        raise NotImplementedError
+    return pool_out
+
+
 class ReadingComprehensionModel:
     def __init__(self, config=None, model_path=None, model_selection='L'):
 
@@ -364,24 +405,9 @@ class ReadingComprehensionModel:
 
         elif embedding_type.endswith('PoolDense'):
             with tf.variable_scope("PoolDense" + name_appendix, reuse=tf.AUTO_REUSE):
-                if embedding_type == 'MaxPoolDense':
-                    pool_out = tf.reduce_max(token_embedding - 100 * tf.expand_dims(1 - sentence_mask, -1),
-                                             axis=1, keepdims=False)
-                elif embedding_type == 'AvgPoolDense':
-                    pool_out = tf.reduce_mean(token_embedding - 100 * tf.expand_dims(1 - sentence_mask, -1),
-                                              axis=1, keepdims=False)
-                elif embedding_type == 'AvgMaxPoolDense':
-                    pool_out = tf.concat([tf.reduce_mean(token_embedding - 100 * tf.expand_dims(1 - sentence_mask, -1),
-                                                         axis=1, keepdims=False),
-                                          tf.reduce_max(token_embedding - 100 * tf.expand_dims(1 - sentence_mask, -1),
-                                                        axis=1, keepdims=False)],
-                                         axis=-1)
-                elif embedding_type == 'FirstPoolDense':
-                    # use the embedding of the first token only
-                    # same as BERT model processing for classification, in which the first token is [cls].
-                    pool_out = token_embedding[:, 0]
-                else:
-                    raise NotImplementedError
+                pool_out = pooling(token_embedding - 100 * tf.expand_dims(1 - sentence_mask, -1),
+                                   pool_type=embedding_type.replace('PoolDense', ''),
+                                   keepdims=False)
 
                 fc_in = tf.layers.dropout(pool_out, rate=self.dropout_rate, training=self.is_training)
                 fc_out = tf.layers.dense(
@@ -491,7 +517,12 @@ class ReadingComprehensionModel:
         # shape is not fully defined: [?,768].  It is possible you are working with a resizeable TensorArray and stop_
         # gradients is not allowing the gradients to be written.  If you set the full element_shape property on the
         # forward TensorArray, the proper all-zeros tensor will be returned instead of incurring this error."
+        # Update: not using dynamic size, only gathter valid sentences before embedding layer, should be ok now.
         sentence_token_embedding_with_null = True
+
+        # if True, for *PoolDense embedding types, do pooling before sentence embedding layer to save memory
+        # only valid shen sentence_token_embedding_use_full_dimension is False
+        sentence_pool_early = True
 
         if sentence_token_embedding_use_full_dimension:  # or self.sentence_embedding_type.endswith('PoolDense'):
             # represent each sentence's token embedding at full demenstion (input_length)
@@ -520,15 +551,14 @@ class ReadingComprehensionModel:
             def sample_loop_body(sample_idx, sample_ary):
 
                 def sentence_loop_cond(sentence_idx, sentence_ary):
-                    if sentence_token_embedding_with_null:
-                        return tf.less(sentence_idx, num_sent_entity)
-                    else:
-                        # # logical_and cannot do short-cut?
-                        # return tf.logical_and(tf.less(sentence_idx, num_sent_entity),
-                        #                       tf.greater(all_sentence_lengths[sample_idx, sentence_idx], 0))
-                        return tf.cond(tf.less(sentence_idx, num_sent_entity),
-                                       lambda: tf.greater(all_sentence_lengths[sample_idx, sentence_idx], 0),
-                                       lambda: tf.constant(False, tf.bool))
+                    return tf.less(sentence_idx, num_sent_entity)
+                    # if sentence_token_embedding_with_null:
+                    #     return tf.less(sentence_idx, num_sent_entity)
+                    # else:
+                    #     # this cannot support "sentence + entity" case, which may have nulls in the middle
+                    #     return tf.cond(tf.less(sentence_idx, num_sent_entity),
+                    #                    lambda: tf.greater(all_sentence_lengths[sample_idx, sentence_idx], 0),
+                    #                    lambda: tf.constant(False, tf.bool))
 
                 def sentence_loop_body(sentence_idx, sentence_ary):
                     # sentence_length x hidden_size
@@ -536,21 +566,32 @@ class ReadingComprehensionModel:
                         token_embedding[sample_idx],
                         tf.squeeze(tf.where(all_sentence_mapping[sample_idx, :, sentence_idx] > 0.5), axis=1))
 
-                    # # this padding may cause error when write array:
-                    # # value shape incompatible with the TensorArray's inferred element shape
-                    # padding = tf.zeros((max_sent_len - all_sentence_lengths[sample_idx, sentence_idx],
-                    #                     self.word_embed_size))
-                    padding = tf.zeros((max_sent_len - tf.shape(sample_sentence_token_embedding)[0],
-                                        self.word_embed_size))
-                    # max_sent_len x hidden_size
-                    sample_sentence_token_embedding = tf.concat([sample_sentence_token_embedding, padding], axis=0)
+                    if sentence_pool_early and self.sentence_embedding_type.endswith('PoolDense'):
+                        # 1 x hidden_size
+                        pool_out = pooling(sample_sentence_token_embedding,
+                                           pool_type=self.sentence_embedding_type.replace('PoolDense', ''),
+                                           keepdims=True)
+                        sample_sentence_token_embedding = tf.cond(
+                            tf.greater(all_sentence_lengths[sample_idx, sentence_idx], 0),
+                            lambda: pool_out,
+                            lambda: tf.zeros([1, self.word_embed_size], dtype=tf.float32))
+                    else:
+                        # # this padding may cause error when write array:
+                        # # value shape incompatible with the TensorArray's inferred element shape
+                        # padding = tf.zeros((max_sent_len - all_sentence_lengths[sample_idx, sentence_idx],
+                        #                     self.word_embed_size))
+                        padding = tf.zeros((max_sent_len - tf.shape(sample_sentence_token_embedding)[0],
+                                            self.word_embed_size))
+                        # max_sent_len x hidden_size
+                        sample_sentence_token_embedding = tf.concat([sample_sentence_token_embedding, padding], axis=0)
 
                     return sentence_idx + 1, sentence_ary.write(sentence_idx, sample_sentence_token_embedding)
 
-                if sentence_token_embedding_with_null:
-                    sentence_embedding_ary = tf.TensorArray(tf.float32, size=num_sent_entity, infer_shape=True)
-                else:
-                    sentence_embedding_ary = tf.TensorArray(tf.float32, size=2, dynamic_size=True, infer_shape=True)
+                sentence_embedding_ary = tf.TensorArray(tf.float32, size=num_sent_entity, infer_shape=True)
+                # if sentence_token_embedding_with_null:
+                #     sentence_embedding_ary = tf.TensorArray(tf.float32, size=num_sent_entity, infer_shape=True)
+                # else:
+                #     sentence_embedding_ary = tf.TensorArray(tf.float32, size=2, dynamic_size=True, infer_shape=True)
 
                 _, sentence_embedding_ary = tf.while_loop(
                     sentence_loop_cond,
@@ -561,12 +602,13 @@ class ReadingComprehensionModel:
                 sentence_embeddings = sentence_embedding_ary.stack()
 
                 return sample_idx + 1, sample_ary.write(sample_idx, sentence_embeddings)
-            
-            if sentence_token_embedding_with_null:
-                embedding_ary = tf.TensorArray(tf.float32, size=batch_size, infer_shape=True)
-            else:
-                embedding_ary = tf.TensorArray(tf.float32, size=batch_size, infer_shape=False,
-                                               element_shape=[None, None, self.word_embed_size])
+
+            embedding_ary = tf.TensorArray(tf.float32, size=batch_size, infer_shape=True)
+            # if sentence_token_embedding_with_null:
+            #     embedding_ary = tf.TensorArray(tf.float32, size=batch_size, infer_shape=True)
+            # else:
+            #     embedding_ary = tf.TensorArray(tf.float32, size=batch_size, infer_shape=False,
+            #                                    element_shape=[None, None, self.word_embed_size])
             _, embedding_ary = tf.while_loop(
                 sample_loop_cond,
                 sample_loop_body,
@@ -574,26 +616,45 @@ class ReadingComprehensionModel:
                 name='batch_reconstructor'
             )
 
-            sentence_mask = tf.cast(
-                tf.expand_dims(tf.range(max_sent_len), axis=0) < sentence_lengths_1d,
-                tf.float32)
-
-            if sentence_token_embedding_with_null:
-                sentence_token_embedding = embedding_ary.stack()
-                # (batch_size*(1+num_sentence+num_entity)) x max_sent_len x hidden_size
-                sentence_token_embedding = tf.reshape(
-                    sentence_token_embedding, (batch_size * num_sent_entity, max_sent_len, self.word_embed_size))
+            if sentence_pool_early and self.sentence_embedding_type.endswith('PoolDense'):
+                sentence_mask = tf.ones([batch_size * num_sent_entity, 1])
             else:
-                # total_num_sentence_in_batch x max_sent_len x hidden_size
-                sentence_token_embedding = embedding_ary.concat()
+                sentence_mask = tf.cast(
+                    tf.expand_dims(tf.range(max_sent_len), axis=0) < sentence_lengths_1d,
+                    tf.float32)
 
+            # if sentence_token_embedding_with_null:
+            #     sentence_token_embedding = embedding_ary.stack()
+            #     if sentence_pool_early and self.sentence_embedding_type.endswith('PoolDense'):
+            #         # (batch_size*(1+num_sentence+num_entity)) x 1 x hidden_size
+            #         sentence_token_embedding = tf.reshape(
+            #             sentence_token_embedding, (batch_size * num_sent_entity, 1, self.word_embed_size))
+            #     else:
+            #         # (batch_size*(1+num_sentence+num_entity)) x max_sent_len x hidden_size
+            #         sentence_token_embedding = tf.reshape(
+            #             sentence_token_embedding, (batch_size * num_sent_entity, max_sent_len, self.word_embed_size))
+            # else:
+            #     # total_num_sentence_in_batch x max_sent_len x hidden_size
+            #     sentence_token_embedding = embedding_ary.concat()
+            #     sentence_mask = tf.gather(sentence_mask, tf.where(sentence_lengths_1d > 0)[:, 0])
+
+            # (batch_size*(1+num_sentence+num_entity)) x max_sent_len (or 1) x hidden_size
+            sentence_token_embedding = embedding_ary.concat()
+
+            if not sentence_token_embedding_with_null:
+                # total_num_sentence_in_batch x max_sent_len (or 1) x hidden_size
+                sentence_token_embedding = tf.gather(sentence_token_embedding, tf.where(sentence_lengths_1d > 0)[:, 0])
                 sentence_mask = tf.gather(sentence_mask, tf.where(sentence_lengths_1d > 0)[:, 0])
 
-        self.sentence_token_embedding = sentence_token_embedding  # debug
-        self.num_sent_entity = num_sent_entity
-        self.sentence_mask = sentence_mask
+        if (not sentence_token_embedding_use_full_dimension and sentence_pool_early and
+                self.sentence_embedding_type.endswith('PoolDense')):
+            # reset the pool type to 'First' if it has already been pooled
+            sentence_embedding_type = 'FirstPoolDense'
+        else:
+            sentence_embedding_type = self.sentence_embedding_type
+
         sentence_embedding = self.sentence_embedding_model(sentence_token_embedding, sentence_mask,
-                                                           embedding_type=self.sentence_embedding_type,
+                                                           embedding_type=sentence_embedding_type,
                                                            embedding_size=self.sentence_embed_size,
                                                            name='support_fact_sentence')
 
