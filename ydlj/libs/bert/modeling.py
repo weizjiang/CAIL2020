@@ -561,6 +561,8 @@ def attention_layer(from_tensor,
                     is_training,
                     attention_mask=None,
                     num_attention_heads=1,
+                    num_sigmoid_attention_heads=0,
+                    num_tanh_attention_heads=0,
                     size_per_head=512,
                     query_act=None,
                     key_act=None,
@@ -599,7 +601,11 @@ def attention_layer(from_tensor,
       from_seq_length, to_seq_length]. The values should be 1 or 0. The
       attention scores will effectively be set to -infinity for any positions in
       the mask that are 0, and will be unchanged for positions that are 1.
-    num_attention_heads: int. Number of attention heads.
+    num_attention_heads: int. total Number of attention heads.
+      the attention heads use softmax activation except for those specified as
+      sigmoid/tanh
+    num_sigmoid_attention_heads: int. Number of sigmoid attention heads.
+    num_tanh_attention_heads: int. Number of tanh attention heads.
     size_per_head: int. Size of each attention head.
     query_act: (optional) Activation function for the query transform.
     key_act: (optional) Activation function for the key transform.
@@ -719,7 +725,13 @@ def attention_layer(from_tensor,
 
   # Normalize the attention scores to probabilities.
   # `attention_probs` = [B, N, F, T]
-  attention_probs = tf.nn.softmax(attention_scores)
+  num_non_softmax_heads = num_sigmoid_attention_heads + num_tanh_attention_heads
+  assert(num_non_softmax_heads <= num_attention_heads)
+  attention_probs = tf.concat([
+      tf.nn.sigmoid(attention_scores[:, :num_sigmoid_attention_heads, :, :]),
+      tf.nn.tanh(attention_scores[:, num_sigmoid_attention_heads:num_non_softmax_heads, :, :]),
+      tf.nn.softmax(attention_scores[:, num_non_softmax_heads:, :, :])],
+      axis=1)
 
   # This is actually dropping out entire tokens to attend to, which might
   # seem a bit unusual, but is taken from the original Transformer paper.
@@ -759,6 +771,8 @@ def transformer_model(input_tensor,
                       hidden_size=768,
                       num_hidden_layers=12,
                       num_attention_heads=12,
+                      num_sigmoid_attention_heads=0,
+                      num_tanh_attention_heads=0,
                       intermediate_size=3072,
                       intermediate_act_fn=gelu,
                       hidden_dropout_prob=0.1,
@@ -784,7 +798,10 @@ def transformer_model(input_tensor,
     is_training: bool. tensor
     hidden_size: int. Hidden size of the Transformer.
     num_hidden_layers: int. Number of layers (blocks) in the Transformer.
-    num_attention_heads: int. Number of attention heads in the Transformer.
+    num_attention_heads: int. total Number of attention heads in the Transformer.
+      the attention heads use softmax activation except for those specified as sigmoid/tanh
+    num_sigmoid_attention_heads: int. Number of sigmoid attention heads.
+    num_tanh_attention_heads: int. Number of tanh attention heads.
     intermediate_size: int. The size of the "intermediate" (a.k.a., feed
       forward) layer.
     intermediate_act_fn: function. The non-linear activation function to apply
@@ -843,6 +860,8 @@ def transformer_model(input_tensor,
               is_training=is_training,
               attention_mask=attention_mask,
               num_attention_heads=num_attention_heads,
+              num_sigmoid_attention_heads=num_sigmoid_attention_heads,
+              num_tanh_attention_heads=num_tanh_attention_heads,
               size_per_head=attention_head_size,
               attention_probs_dropout_prob=attention_probs_dropout_prob,
               initializer_range=initializer_range,
