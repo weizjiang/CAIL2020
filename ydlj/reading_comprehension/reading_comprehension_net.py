@@ -65,6 +65,92 @@ def pooling(token_embedding, pool_type, keepdims=False):
     return pool_out
 
 
+def multi_layer_self_attention(input_tensor,
+                               is_training,
+                               attention_mask=None,
+                               hidden_size=768,
+                               num_hidden_layers=12,
+                               num_attention_heads=12,
+                               num_sigmoid_attention_heads=0,
+                               num_tanh_attention_heads=0,
+                               attention_probs_dropout_prob=0.1,
+                               initializer_range=0.02,
+                               share_layer_weights=False):
+    """Multi-layer self attention, based on BERT implemenation.
+    Args:
+    input_tensor: float Tensor of shape [batch_size, seq_length, hidden_size].
+    attention_mask: (optional) int32 Tensor of shape [batch_size, seq_length,
+      seq_length], with 1 for positions that can be attended to and 0 in
+      positions that should not be.
+    is_training: bool. tensor
+    hidden_size: int. Hidden size of the self-attention.
+    num_hidden_layers: int. Number of layers (blocks) in the self.
+    num_attention_heads: int. total Number of attention heads in the self.
+      the attention heads use softmax activation except for those specified as sigmoid/tanh
+    num_sigmoid_attention_heads: int. Number of sigmoid attention heads.
+    num_tanh_attention_heads: int. Number of tanh attention heads.
+    attention_probs_dropout_prob: float. Dropout probability of the attention
+      probabilities.
+    initializer_range: float. Range of the initializer (stddev of truncated
+      normal).
+    share_layer_weights: Whether to share weights for different layers
+
+    Returns:
+    float Tensor of shape [batch_size, seq_length, hidden_size], the final
+    hidden layer of the Transformer.
+
+    Raises:
+    ValueError: A Tensor shape or parameter is invalid.
+    """
+    if hidden_size % num_attention_heads != 0:
+        raise ValueError(
+            "The hidden size (%d) is not a multiple of the number of attention "
+            "heads (%d)" % (hidden_size, num_attention_heads))
+
+    attention_head_size = int(hidden_size / num_attention_heads)
+    input_shape = bert_modeling.get_shape_list(input_tensor, expected_rank=3)
+    batch_size = input_shape[0]
+    seq_length = input_shape[1]
+    input_width = input_shape[2]
+
+    prev_output = bert_modeling.reshape_to_matrix(input_tensor)
+
+    for layer_idx in range(num_hidden_layers):
+        layer_scope = "layer" if share_layer_weights else "layer_%d" % layer_idx
+        with tf.variable_scope(layer_scope):
+            layer_input = prev_output
+
+            with tf.variable_scope("attention"):
+                with tf.variable_scope("self"):
+                    attention_output = bert_modeling.attention_layer(
+                        from_tensor=layer_input,
+                        to_tensor=layer_input,
+                        is_training=is_training,
+                        attention_mask=attention_mask,
+                        num_attention_heads=num_attention_heads,
+                        num_sigmoid_attention_heads=num_sigmoid_attention_heads,
+                        num_tanh_attention_heads=num_tanh_attention_heads,
+                        size_per_head=attention_head_size,
+                        attention_probs_dropout_prob=attention_probs_dropout_prob,
+                        initializer_range=initializer_range,
+                        do_return_2d_tensor=True,
+                        batch_size=batch_size,
+                        from_seq_length=seq_length,
+                        to_seq_length=seq_length)
+
+                # Run a linear projection of `input_width`
+                with tf.variable_scope("output"):
+                    layer_output = tf.layers.dense(
+                        attention_output,
+                        input_width,
+                        kernel_initializer=bert_modeling.create_initializer(initializer_range))
+
+            prev_output = bert_modeling.layer_norm(layer_output)
+
+    final_output = bert_modeling.reshape_from_matrix(prev_output, input_shape)
+    return final_output
+
+
 class ReadingComprehensionModel:
     def __init__(self, config=None, model_path=None, model_selection='L'):
 
@@ -148,6 +234,7 @@ class ReadingComprehensionModel:
         self.answer_pred_use_support_fact_embedding = config.get('answer_pred_use_support_fact_embedding', 'Sentence')
         self.answer_span_predict_model = config.get('answer_span_predict_model', 'None')
         self.answer_span_transformer = config.get('answer_span_transformer', {})
+        self.answer_span_self_attention = config.get('answer_span_self_attention', {})
 
         self.sentence_embedding_type = config.get('sentence_embedding_type', 'MaxPoolDense')
         self.sentence_embed_size = config.get('sentence_embed_size', 200)
@@ -169,6 +256,7 @@ class ReadingComprehensionModel:
 
         self.support_fact_reasoning_model = config.get('support_fact_reasoning_model', 'None')
         self.support_fact_transformer = config.get('support_fact_transformer', {})
+        self.support_fact_self_attention = config.get('support_fact_self_attention', {})
         self.sentence_entity_connect_type = config.get('sentence_entity_connect_type', 'Tree')
 
         self.support_fact_loss_all_samples = config.get('support_fact_loss_all_samples', True)
@@ -671,53 +759,68 @@ class ReadingComprehensionModel:
 
         # --------------------------------------------------------------------------------------------------------------
         # support fact reasoning layer
-
-        if self.support_fact_reasoning_model == 'Transformer':
-            with tf.variable_scope("support_fact_model", reuse=tf.AUTO_REUSE):
-                if self.sentence_entity_connect_type == 'Full':
-                    # batch_size x (1+num_sentence+num_entity)
-                    all_sentences_entities = tf.reduce_any(all_sentence_mapping > 0.5, axis=1)
-                    sentence_entity_attention_mask = tf.logical_and(tf.expand_dims(all_sentences_entities, axis=2),
-                                                                    tf.expand_dims(all_sentences_entities, axis=1))
-                elif self.sentence_entity_connect_type == 'Tree':
-                    # batch_size x (1+num_sentence)
-                    all_sentences = tf.reduce_any(all_sentence_mapping[:, :, :num_sentence+1] > 0.5, axis=1)
-                    # all sententences are connected
-                    # batch_size x (1+num_sentence) x (1+num_sentence)
-                    sentence_attention_mask = tf.cast(tf.logical_and(tf.expand_dims(all_sentences, axis=2),
-                                                                     tf.expand_dims(all_sentences, axis=1)),
-                                                      tf.int32)
-                    # entities are only connected to the sentence it belongs to.
-                    # entities are not connected to entities
-                    entity_attention_mask = tf.zeros([batch_size, num_entity, num_entity], dtype=tf.int32)
-                    sentence_entity_attention_mask = tf.concat(
-                        [tf.concat([sentence_attention_mask, self.input_sent_entity_mapping], axis=2),
-                         tf.concat([tf.transpose(self.input_sent_entity_mapping, perm=[0, 2, 1]),
-                                    entity_attention_mask], axis=2)],
-                        axis=1
-                    )
-
-                support_fact_embedding = bert_modeling.transformer_model(
-                    sentence_embedding,
-                    is_training=self.is_training,
-                    attention_mask=sentence_entity_attention_mask,
-                    hidden_size=self.sentence_embed_size,
-                    num_hidden_layers=self.support_fact_transformer['num_hidden_layers'],
-                    num_attention_heads=self.support_fact_transformer['num_attention_heads'],
-                    num_sigmoid_attention_heads=self.support_fact_transformer['num_sigmoid_attention_heads'],
-                    num_tanh_attention_heads=self.support_fact_transformer['num_tanh_attention_heads'],
-                    intermediate_size=self.support_fact_transformer['intermediate_size'],
-                    intermediate_act_fn=bert_modeling.get_activation(self.support_fact_transformer['hidden_act']),
-                    hidden_dropout_prob=self.support_fact_transformer['hidden_dropout_prob'],
-                    attention_probs_dropout_prob=self.support_fact_transformer['attention_probs_dropout_prob'],
-                    initializer_range=0.02,
-                    do_return_all_layers=False,
-                    share_layer_weights=self.support_fact_transformer['share_layer_weights']
-                )
+        if self.support_fact_reasoning_model == 'None':
+            support_fact_embedding = sentence_embedding
 
         else:
-            # 'None'
-            support_fact_embedding = sentence_embedding
+            if self.sentence_entity_connect_type == 'Full':
+                # batch_size x (1+num_sentence+num_entity)
+                all_sentences_entities = tf.reduce_any(all_sentence_mapping > 0.5, axis=1)
+                sentence_entity_attention_mask = tf.logical_and(tf.expand_dims(all_sentences_entities, axis=2),
+                                                                tf.expand_dims(all_sentences_entities, axis=1))
+            elif self.sentence_entity_connect_type == 'Tree':
+                # batch_size x (1+num_sentence)
+                all_sentences = tf.reduce_any(all_sentence_mapping[:, :, :num_sentence+1] > 0.5, axis=1)
+                # all sententences are connected
+                # batch_size x (1+num_sentence) x (1+num_sentence)
+                sentence_attention_mask = tf.cast(tf.logical_and(tf.expand_dims(all_sentences, axis=2),
+                                                                 tf.expand_dims(all_sentences, axis=1)),
+                                                  tf.int32)
+                # entities are only connected to the sentence it belongs to.
+                # entities are not connected to entities
+                entity_attention_mask = tf.zeros([batch_size, num_entity, num_entity], dtype=tf.int32)
+                sentence_entity_attention_mask = tf.concat(
+                    [tf.concat([sentence_attention_mask, self.input_sent_entity_mapping], axis=2),
+                     tf.concat([tf.transpose(self.input_sent_entity_mapping, perm=[0, 2, 1]),
+                                entity_attention_mask], axis=2)],
+                    axis=1
+                )
+
+            with tf.variable_scope("support_fact_model", reuse=tf.AUTO_REUSE):
+
+                if self.support_fact_reasoning_model == 'Transformer':
+                    support_fact_embedding = bert_modeling.transformer_model(
+                        sentence_embedding,
+                        is_training=self.is_training,
+                        attention_mask=sentence_entity_attention_mask,
+                        hidden_size=self.support_fact_transformer['hidden_size'],
+                        num_hidden_layers=self.support_fact_transformer['num_hidden_layers'],
+                        num_attention_heads=self.support_fact_transformer['num_attention_heads'],
+                        num_sigmoid_attention_heads=self.support_fact_transformer['num_sigmoid_attention_heads'],
+                        num_tanh_attention_heads=self.support_fact_transformer['num_tanh_attention_heads'],
+                        intermediate_size=self.support_fact_transformer['intermediate_size'],
+                        intermediate_act_fn=bert_modeling.get_activation(self.support_fact_transformer['hidden_act']),
+                        hidden_dropout_prob=self.support_fact_transformer['hidden_dropout_prob'],
+                        attention_probs_dropout_prob=self.support_fact_transformer['attention_probs_dropout_prob'],
+                        initializer_range=0.02,
+                        do_return_all_layers=False,
+                        share_layer_weights=self.support_fact_transformer['share_layer_weights']
+                    )
+
+                elif self.support_fact_reasoning_model == 'SelfAttention':
+                    support_fact_embedding = multi_layer_self_attention(
+                        sentence_embedding,
+                        is_training=self.is_training,
+                        attention_mask=sentence_entity_attention_mask,
+                        hidden_size=self.support_fact_self_attention['hidden_size'],
+                        num_hidden_layers=self.support_fact_self_attention['num_hidden_layers'],
+                        num_attention_heads=self.support_fact_self_attention['num_attention_heads'],
+                        num_sigmoid_attention_heads=self.support_fact_self_attention['num_sigmoid_attention_heads'],
+                        num_tanh_attention_heads=self.support_fact_self_attention['num_tanh_attention_heads'],
+                        attention_probs_dropout_prob=self.support_fact_self_attention['attention_probs_dropout_prob'],
+                        initializer_range=0.02,
+                        share_layer_weights=self.support_fact_self_attention['share_layer_weights']
+                    )
 
         # --------------------------------------------------------------------------------------------------------------
         # support fact prediction layer
@@ -810,33 +913,47 @@ class ReadingComprehensionModel:
         else:
             raise NotImplementedError
 
-        if self.answer_span_predict_model == 'Transformer':
-            with tf.variable_scope("answer_span_model", reuse=tf.AUTO_REUSE):
-                # batch_size x input_length x input_length
-                token_attention_mask = tf.logical_and(tf.expand_dims(self.input_mask > 0.5, axis=2),
-                                                      tf.expand_dims(self.input_mask > 0.5, axis=1))
-
-                span_embedding = bert_modeling.transformer_model(
-                    token_embedding_ext,
-                    is_training=self.is_training,
-                    attention_mask=token_attention_mask,
-                    hidden_size=self.answer_span_transformer['hidden_size'],
-                    num_hidden_layers=self.answer_span_transformer['num_hidden_layers'],
-                    num_attention_heads=self.answer_span_transformer['num_attention_heads'],
-                    num_sigmoid_attention_heads=self.answer_span_transformer['num_sigmoid_attention_heads'],
-                    num_tanh_attention_heads=self.answer_span_transformer['num_tanh_attention_heads'],
-                    intermediate_size=self.answer_span_transformer['intermediate_size'],
-                    intermediate_act_fn=bert_modeling.get_activation(self.answer_span_transformer['hidden_act']),
-                    hidden_dropout_prob=self.answer_span_transformer['hidden_dropout_prob'],
-                    attention_probs_dropout_prob=self.answer_span_transformer['attention_probs_dropout_prob'],
-                    initializer_range=0.02,
-                    do_return_all_layers=False,
-                    share_layer_weights=self.answer_span_transformer['share_layer_weights']
-                )
+        if self.answer_span_predict_model == 'None':
+            span_embedding = token_embedding_ext
 
         else:
-            # 'None'
-            span_embedding = token_embedding_ext
+            # batch_size x input_length x input_length
+            token_attention_mask = tf.logical_and(tf.expand_dims(self.input_mask > 0.5, axis=2),
+                                                  tf.expand_dims(self.input_mask > 0.5, axis=1))
+
+            with tf.variable_scope("answer_span_model", reuse=tf.AUTO_REUSE):
+                if self.answer_span_predict_model == 'Transformer':
+                    span_embedding = bert_modeling.transformer_model(
+                        token_embedding_ext,
+                        is_training=self.is_training,
+                        attention_mask=token_attention_mask,
+                        hidden_size=self.answer_span_transformer['hidden_size'],
+                        num_hidden_layers=self.answer_span_transformer['num_hidden_layers'],
+                        num_attention_heads=self.answer_span_transformer['num_attention_heads'],
+                        num_sigmoid_attention_heads=self.answer_span_transformer['num_sigmoid_attention_heads'],
+                        num_tanh_attention_heads=self.answer_span_transformer['num_tanh_attention_heads'],
+                        intermediate_size=self.answer_span_transformer['intermediate_size'],
+                        intermediate_act_fn=bert_modeling.get_activation(self.answer_span_transformer['hidden_act']),
+                        hidden_dropout_prob=self.answer_span_transformer['hidden_dropout_prob'],
+                        attention_probs_dropout_prob=self.answer_span_transformer['attention_probs_dropout_prob'],
+                        initializer_range=0.02,
+                        do_return_all_layers=False,
+                        share_layer_weights=self.answer_span_transformer['share_layer_weights']
+                    )
+                elif self.answer_span_predict_model == 'SelfAttention':
+                    span_embedding = multi_layer_self_attention(
+                        token_embedding_ext,
+                        is_training=self.is_training,
+                        attention_mask=token_attention_mask,
+                        hidden_size=self.answer_span_self_attention['hidden_size'],
+                        num_hidden_layers=self.answer_span_self_attention['num_hidden_layers'],
+                        num_attention_heads=self.answer_span_self_attention['num_attention_heads'],
+                        num_sigmoid_attention_heads=self.answer_span_self_attention['num_sigmoid_attention_heads'],
+                        num_tanh_attention_heads=self.answer_span_self_attention['num_tanh_attention_heads'],
+                        attention_probs_dropout_prob=self.answer_span_self_attention['attention_probs_dropout_prob'],
+                        initializer_range=0.02,
+                        share_layer_weights=self.answer_span_self_attention['share_layer_weights']
+                    )
 
         span_logits = tf.layers.dense(
             span_embedding,

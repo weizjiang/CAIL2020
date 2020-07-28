@@ -150,7 +150,8 @@ BiLSTM: {
 
 # support fact reasoning model type
 # 'None': use sentence embedding directly
-# 'Transformer': Transformer (self-attention)
+# 'Transformer': Transformer
+# 'SelfAttention': self-attention
 support_fact_reasoning_model: 'Transformer'
 
 # transformer parameters for support fact reasoning model
@@ -164,6 +165,17 @@ support_fact_transformer: {
   intermediate_size: 512,
   hidden_act: 'gelu',
   hidden_dropout_prob: 0.1,
+  attention_probs_dropout_prob: 0.1,
+  share_layer_weights: true
+}
+
+# self-attention parameters for support fact reasoning model
+support_fact_self_attention: {
+  hidden_size: 512,
+  num_hidden_layers: 2,
+  num_attention_heads: 16,
+  num_sigmoid_attention_heads: 4,
+  num_tanh_attention_heads: 4,
   attention_probs_dropout_prob: 0.1,
   share_layer_weights: true
 }
@@ -188,10 +200,11 @@ answer_pred_use_support_fact_embedding: 'SentenceEntityMean'
 
 # answer span predict model
 # 'None': use token embedding (maybe extended with sentence and/or entity embeddings)
-# 'Transformer': Transformer (self-attention)
+# 'Transformer': Transformer
+# 'SelfAttention': self-attention
 answer_span_predict_model: 'Transformer'
 
-# transformer parameters for support fact reasoning model
+# transformer parameters for answer span predict model
 answer_span_transformer: {
   # hidden_size should equal to:
   #   word_embedding_size, if answer_pred_use_support_fact_embedding is None
@@ -208,6 +221,18 @@ answer_span_transformer: {
   attention_probs_dropout_prob: 0.1,
   share_layer_weights: false
 }
+
+# self-attention parameters for answer span predict model
+answer_span_self_attention: {
+  hidden_size: 1000,
+  num_hidden_layers: 2,
+  num_attention_heads: 10,
+  num_sigmoid_attention_heads: 3,
+  num_tanh_attention_heads: 3,
+  attention_probs_dropout_prob: 0.1,
+  share_layer_weights: false
+}
+
 
 # whether to use query sentence embedding (output from support fact reasoning layer if applicable) only
 # if false, passing all token embeeding (output from answer span predict model) into a sentence embedding layer to get
