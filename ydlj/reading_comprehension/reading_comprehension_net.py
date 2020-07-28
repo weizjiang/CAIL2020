@@ -1671,6 +1671,7 @@ class ReadingComprehensionModel:
                     self.input_sentence: val_batch['context_idxs'],
                     self.input_mask: val_batch['context_mask'],
                     self.input_sentence_mapping: val_batch['all_mapping'],
+                    self.input_sent_entity_mapping: val_batch['sent_entity_mapping'],
                     self.is_training: False
                 }
             )
