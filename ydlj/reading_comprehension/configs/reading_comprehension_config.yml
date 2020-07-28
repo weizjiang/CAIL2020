@@ -174,19 +174,27 @@ sentence_entity_connect_type: 'Full'
 ################################################################################
 # answer type and span predition layer
 
-# whether to combine sentence embedding (output from support fact reasoning layer if applicable) for answer span
-# (and answer type) predition layer.
-# if false, only use token embedding.
-answer_pred_use_support_fact_embedding: true
+# how to combine sentence (and entity) embedding (output from support fact reasoning layer if applicable) for answer
+# span (and answer type) predition layer.
+# 'None': only use token embedding.
+# 'Sentence': combine token embedding with sentence （including query sentence） embedding
+# 'Entity': combine token embedding with entity embedding
+# 'SentenceEntitySum': combine token embedding with the sum of sentence embedding and entity embedding
+# 'SentenceEntityMean': combine token embedding with the average of sentence embedding and entity embedding
+# 'SentenceEntityConcat': combine token embedding with the concatenation of sentence embedding and entity embedding
+answer_pred_use_support_fact_embedding: 'SentenceEntityMean'
 
 # answer span predict model
-# 'None': use token embedding (extended with sentence embedding if answer_pred_use_support_fact_embedding=true)
+# 'None': use token embedding (maybe extended with sentence and/or entity embeddings)
 # 'Transformer': Transformer (self-attention)
 answer_span_predict_model: 'Transformer'
 
 # transformer parameters for support fact reasoning model
 answer_span_transformer: {
-  # hidden_size should equal to word_embedding_size + sentence_embed_size if answer_pred_use_support_fact_embedding=true
+  # hidden_size should equal to:
+  #   word_embedding_size, if answer_pred_use_support_fact_embedding is None
+  #   word_embedding_size + sentence_embed_size*2, if answer_pred_use_support_fact_embedding is SentenceEntityConcat
+  #   word_embedding_size + sentence_embed_size, otherwise
   hidden_size: 1024,
   num_hidden_layers: 1,
   num_attention_heads: 8,

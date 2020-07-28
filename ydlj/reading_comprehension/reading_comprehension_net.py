@@ -145,7 +145,7 @@ class ReadingComprehensionModel:
         self.answer_type_embedding_type = config.get('answer_type_embedding_type', 'FirstPoolDense')
         self.answer_type_embed_size = config.get('answer_type_embed_size', 200)
         self.answer_type_use_query_embedding_only = config.get('answer_type_use_query_embedding_only', False)
-        self.answer_pred_use_support_fact_embedding = config.get('answer_pred_use_support_fact_embedding', False)
+        self.answer_pred_use_support_fact_embedding = config.get('answer_pred_use_support_fact_embedding', 'Sentence')
         self.answer_span_predict_model = config.get('answer_span_predict_model', 'None')
         self.answer_span_transformer = config.get('answer_span_transformer', {})
 
@@ -770,13 +770,43 @@ class ReadingComprehensionModel:
 
         # --------------------------------------------------------------------------------------------------------------
         # answer type and span prediction layer
-        if self.answer_pred_use_support_fact_embedding:
-            # concatenate token embeddings with copied sentence embedding after support fact reasoning
+        if self.answer_pred_use_support_fact_embedding == 'None':
+            # use token embedding only
+            token_embedding_ext = token_embedding
+        elif self.answer_pred_use_support_fact_embedding == 'Sentence':
+            # concatenate token embeddings with the sentence embedding after support fact reasoning
+            token_embedding_ext = tf.concat([token_embedding,
+                                             tf.matmul(all_sentence_mapping[:, :, :num_sentence+1],
+                                                       support_fact_embedding[:, :num_sentence+1, :])],
+                                            axis=2)
+        elif self.answer_pred_use_support_fact_embedding == 'Entity':
+            # concatenate token embeddings with the entity embedding after support fact reasoning
+            token_embedding_ext = tf.concat([token_embedding,
+                                             tf.matmul(all_sentence_mapping[:, :, num_sentence+1:],
+                                                       support_fact_embedding[:, num_sentence+1:, :])],
+                                            axis=2)
+        elif self.answer_pred_use_support_fact_embedding == 'SentenceEntityConcat':
+            # concatenate token embeddings with the sentence embedding after support fact reasoning
+            token_embedding_ext = tf.concat([token_embedding,
+                                             tf.matmul(all_sentence_mapping[:, :, :num_sentence+1],
+                                                       support_fact_embedding[:, :num_sentence+1, :]),
+                                             tf.matmul(all_sentence_mapping[:, :, num_sentence+1:],
+                                                       support_fact_embedding[:, num_sentence+1:, :])
+                                             ],
+                                            axis=2)
+        elif self.answer_pred_use_support_fact_embedding == 'SentenceEntitySum':
+            # concatenate token embeddings with the sum of sentence and entity embeddings after support fact reasoning
             token_embedding_ext = tf.concat([token_embedding,
                                              tf.matmul(all_sentence_mapping, support_fact_embedding)],
                                             axis=2)
+        elif self.answer_pred_use_support_fact_embedding == 'SentenceEntityMean':
+            # concatenate token embeddings with the avg of sentence and entity embeddings after support fact reasoning
+            token_embedding_ext = tf.concat([token_embedding,
+                                             tf.div_no_nan(tf.matmul(all_sentence_mapping, support_fact_embedding),
+                                                           tf.reduce_sum(all_sentence_mapping, axis=2, keepdims=True))],
+                                            axis=2)
         else:
-            token_embedding_ext = token_embedding
+            raise NotImplementedError
 
         if self.answer_span_predict_model == 'Transformer':
             with tf.variable_scope("answer_span_model", reuse=tf.AUTO_REUSE):
