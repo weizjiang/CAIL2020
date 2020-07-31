@@ -54,11 +54,15 @@ word_embedding_trainable: true
 BERT: {
   # vocabulary file for the pretrained model
 #  vocab_file: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\vocab.txt',
-   vocab_file: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/vocab.txt',
+  vocab_file: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/vocab.txt',
+#  vocab_file: 'C:\Works\PretrainedModel\structbert_base_zh_tf\vocab.txt',
+#  vocab_file: '/home/jiangwei/work/bert/structbert_base_zh_tf/vocab.txt',
 
   # initial checkpoint of BERT model
 #  init_checkpoint: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\bert_model.ckpt',
-   init_checkpoint: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/bert_model.ckpt',
+  init_checkpoint: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/bert_model.ckpt',
+#  init_checkpoint: 'C:\Works\PretrainedModel\structbert_base_zh_tf\structbert_model.ckpt',
+#  init_checkpoint: '/home/jiangwei/work/bert/structbert_base_zh_tf/structbert_model.ckpt',
 
   # bert model configurations
   bert_config: {
