@@ -105,9 +105,19 @@ def get_entity_spans(text):
         r'[京津沪渝冀豫云辽黑湘皖鲁新苏浙赣鄂桂甘晋蒙陕吉闽贵粤青藏川宁琼][×a-zA-Z\d\*]{1,7}',  # hidden car license
     ]
     entity_rule_spans = []
+
+    def is_overlap_with_rule_span(start_pos, end_pos):
+        overlap_with_rule_span = False
+        for span in entity_rule_spans:
+            if start_pos <= span[1] and end_pos >= span[0]:
+                overlap_with_rule_span = True
+                break
+        return overlap_with_rule_span
+
     for rule in entity_rules:
         for m in re.finditer(rule, text):
-            entity_rule_spans.append((m.start(), m.end()-1))
+            if not is_overlap_with_rule_span(m.start(), m.end()-1):
+                entity_rule_spans.append((m.start(), m.end()-1))
 
     # get entities by pos segger
     word_start_pos = 0
@@ -115,12 +125,7 @@ def get_entity_spans(text):
     for word_info in dt.cut(text):
         word_end_pos = word_start_pos + len(word_info.word) - 1
         if word_info.flag in ['s', 't', 'nr', 'ns', 'nt', 'nw', 'nz', 'm', 'r']:
-            overlap_with_rule_span = False
-            for entity_rule_span in entity_rule_spans:
-                if word_start_pos <= entity_rule_span[1] and word_end_pos >= entity_rule_span[0]:
-                    overlap_with_rule_span = True
-                    break
-            if not overlap_with_rule_span:
+            if not is_overlap_with_rule_span(word_start_pos, word_end_pos):
                 entity_spans.append((word_start_pos, word_end_pos))
         word_start_pos = word_end_pos + 1
 
@@ -134,7 +139,7 @@ def get_entity_spans(text):
     return entity_spans
 
 
-def read_examples( full_file):
+def read_examples(full_file):
 
     with open(full_file, 'r', encoding='utf-8') as reader:
         full_data = json.load(reader)    
