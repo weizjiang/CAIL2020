@@ -184,7 +184,11 @@ if __name__ == '__main__':
     # prediction_file = r'../reading_comprehension/results/result_rc_20200727-110232_threshold_0.5_restrict_span.json'
     # prediction_file = r'../reading_comprehension/results/result_rc_20200727-112404_threshold_0.5_restrict_span.json'
     # prediction_file = r'../reading_comprehension/results/result_rc_20200727-204614_threshold_0.5_restrict_span.json'
-    prediction_file = r'../reading_comprehension/results/result_rc_20200727-210204_threshold_0.5_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200727-210204_threshold_0.5_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200728-160636_threshold_0.5_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200729-121944_threshold_0.5_restrict_span.json'
+    prediction_file = r'../reading_comprehension/results/result_rc_20200729-115544_threshold_0.5_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200730-210101_threshold_0.5_restrict_span.json'
 
     gold_file = r'../data/dev_big.json'
 

@@ -183,6 +183,8 @@ support_fact_self_attention: {
 # sentence-entity connection type
 # 'Full': all sentence and entities are fully connected
 # 'Tree': entities are only connected to the sentence it belongs to; no entity-to-entity connection
+# 'Bush': entities are only connected to the sentence it belongs to; entities belonging to the same sentence are fully
+#         connected
 sentence_entity_connect_type: 'Full'
 
 ################################################################################

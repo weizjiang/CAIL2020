@@ -768,7 +768,7 @@ class ReadingComprehensionModel:
                 all_sentences_entities = tf.reduce_any(all_sentence_mapping > 0.5, axis=1)
                 sentence_entity_attention_mask = tf.logical_and(tf.expand_dims(all_sentences_entities, axis=2),
                                                                 tf.expand_dims(all_sentences_entities, axis=1))
-            elif self.sentence_entity_connect_type == 'Tree':
+            elif self.sentence_entity_connect_type in ['Tree', 'Bush']:
                 # batch_size x (1+num_sentence)
                 all_sentences = tf.reduce_any(all_sentence_mapping[:, :, :num_sentence+1] > 0.5, axis=1)
                 # all sententences are connected
@@ -776,9 +776,14 @@ class ReadingComprehensionModel:
                 sentence_attention_mask = tf.cast(tf.logical_and(tf.expand_dims(all_sentences, axis=2),
                                                                  tf.expand_dims(all_sentences, axis=1)),
                                                   tf.int32)
+                if self.sentence_entity_connect_type == 'Tree':
+                    # entities are not connected to entities
+                    entity_attention_mask = tf.zeros([batch_size, num_entity, num_entity], dtype=tf.int32)
+                elif self.sentence_entity_connect_type == 'Bush':
+                    # entities belonging to the same sentence are fully connected.
+                    entity_attention_mask = tf.matmul(tf.transpose(self.input_sent_entity_mapping, perm=[0, 2, 1]),
+                                                      self.input_sent_entity_mapping)
                 # entities are only connected to the sentence it belongs to.
-                # entities are not connected to entities
-                entity_attention_mask = tf.zeros([batch_size, num_entity, num_entity], dtype=tf.int32)
                 sentence_entity_attention_mask = tf.concat(
                     [tf.concat([sentence_attention_mask, self.input_sent_entity_mapping], axis=2),
                      tf.concat([tf.transpose(self.input_sent_entity_mapping, perm=[0, 2, 1]),
