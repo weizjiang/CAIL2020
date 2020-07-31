@@ -417,8 +417,8 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length, max_query_
         assert len(query_input_mask) == max_query_length
         assert len(query_segment_ids) == max_query_length
 
-        sentence_spans = get_valid_sentence_spans(sentence_spans, max_seq_length)
-        entity_spans = get_valid_entity_spans(entity_spans, len(sentence_spans), max_seq_length)
+        sentence_spans = get_valid_sentence_spans(sentence_spans, max_seq_length - 1)
+        entity_spans = get_valid_entity_spans(entity_spans, len(sentence_spans), max_seq_length - 1)
 
         sup_fact_ids = example.sup_fact_id
         sent_num = len(sentence_spans)
