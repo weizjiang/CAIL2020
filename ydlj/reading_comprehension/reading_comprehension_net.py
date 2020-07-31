@@ -261,7 +261,7 @@ class ReadingComprehensionModel:
 
         self.support_fact_loss_all_samples = config.get('support_fact_loss_all_samples', True)
         self.support_fact_loss_type = config.get('support_fact_loss_type', 'Mean')
-        self.span_loss_all_samples = config.get('span_loss_all_samples', False)
+        self.span_loss_samples = config.get('span_loss_samples', 'NonSpan3Pos')
         self.span_loss_weight = config.get('span_loss_weight', 1.0)
         self.answer_type_loss_weight = config.get('answer_type_loss_weight', 1.0)
         self.support_fact_loss_weight = config.get('support_fact_loss_weight', 1.0)
@@ -967,11 +967,14 @@ class ReadingComprehensionModel:
             kernel_initializer=tf.truncated_normal_initializer(mean=0, stddev=0.02)
         )
 
-        if self.span_loss_all_samples:
+        if self.span_loss_samples == 'SpanOnly':
+            span_contex_sentences_mask = contex_sentences_mask
+        elif self.span_loss_samples == 'NonSpan1Pos':
             # keep the position on first token
             span_contex_sentences_mask = contex_sentences_mask + first_token_mask
-        else:
-            span_contex_sentences_mask = contex_sentences_mask
+        elif self.span_loss_samples == 'NonSpan3Pos':
+            # keeping the positions of [CLS] and 2 [SEP] tokens
+            span_contex_sentences_mask = self.input_mask - query_mask
 
         span_logits = span_logits - 100 * (1 - tf.expand_dims(span_contex_sentences_mask, axis=2))
 
@@ -993,14 +996,14 @@ class ReadingComprehensionModel:
                                                               logits=span_logits[:, :, 1])
         span_ce = span_start_ce + span_end_ce
 
-        if self.span_loss_all_samples:
-            self.span_loss = tf.reduce_mean(span_ce, name='span_loss')
-        else:
+        if self.span_loss_samples == 'SpanOnly':
             span_answer_samples = tf.squeeze(tf.where(tf.equal(self.input_answer_type, 0)), axis=1)
             span_loss = tf.cond(tf.equal(tf.size(span_answer_samples), 0),
                                 lambda: tf.constant(0, tf.float32),
                                 lambda: tf.reduce_mean(tf.gather(span_ce, span_answer_samples)))
             self.span_loss = tf.identity(span_loss, name='span_loss')
+        else:
+            self.span_loss = tf.reduce_mean(span_ce, name='span_loss')
 
         if self.answer_type_use_query_embedding_only:
             # use the query sentence embedding output of support fact reasoning layer
@@ -1234,12 +1237,22 @@ class ReadingComprehensionModel:
                         is_valid = False
                     q_type[sample_idx] = 0
                 elif case.ans_type == 1:
-                    y1[sample_idx] = IGNORE_INDEX
-                    y2[sample_idx] = IGNORE_INDEX
+                    if self.span_loss_samples == 'NonSpan3Pos':
+                        # the position of the first [SEP] token
+                        y1[sample_idx] = sent_spans[0][0] - 1
+                        y2[sample_idx] = sent_spans[0][0] - 1
+                    else:
+                        y1[sample_idx] = IGNORE_INDEX
+                        y2[sample_idx] = IGNORE_INDEX
                     q_type[sample_idx] = 1
                 elif case.ans_type == 2:
-                    y1[sample_idx] = IGNORE_INDEX
-                    y2[sample_idx] = IGNORE_INDEX
+                    if self.span_loss_samples == 'NonSpan3Pos':
+                        # the position of the second [SEP] token
+                        y1[sample_idx] = len(case.doc_tokens) - 1
+                        y2[sample_idx] = len(case.doc_tokens) - 1
+                    else:
+                        y1[sample_idx] = IGNORE_INDEX
+                        y2[sample_idx] = IGNORE_INDEX
                     q_type[sample_idx] = 2
                 elif case.ans_type == 3:
                     y1[sample_idx] = IGNORE_INDEX

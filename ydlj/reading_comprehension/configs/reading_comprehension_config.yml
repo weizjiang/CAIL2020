@@ -239,7 +239,7 @@ answer_span_self_attention: {
 # whether to use query sentence embedding (output from support fact reasoning layer if applicable) only
 # if false, passing all token embeeding (output from answer span predict model) into a sentence embedding layer to get
 # the type embedding.
-answer_type_use_query_embedding_only: true
+answer_type_use_query_embedding_only: false
 
 # answer type embedding size
 # only applied when answer_type_use_query_embedding_only is false
@@ -260,8 +260,10 @@ answer_type_embedding_type: 'MaxPoolDense'
 # loss function parameters
 
 # whether to use all samples to calculate span loss
-# if true, also consider yes/no/unknown types labeled as [0,0]
-span_loss_all_samples: true
+# 'SpanOnly': only consider samples for span answer
+# 'NonSpan1Pos': also consider yes/no/unknown types labeled as [0,0]
+# 'NonSpan3Pos': also consider yes/no/unknown types, labeled at 1st [SEP], 2nd [SEP], [CLS], respectively.
+span_loss_samples: 'NonSpan3Pos'
 
 # whether to use all samples to calculate support fact loss
 # if false, only consider samples with more than one sentences
