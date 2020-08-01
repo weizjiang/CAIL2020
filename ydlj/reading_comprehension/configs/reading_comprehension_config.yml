@@ -12,24 +12,24 @@ DataSet: {
   TrainPercentage: -1,
 
   # train set example file path
-#  TrainSetExampleFile: '../data/dev_debug_example.pkl.gz',
+  TrainSetExampleFile: '../data/dev_debug_example.pkl.gz',
 #  TrainSetExampleFile: '../data/data_correct_span/train_example.pkl.gz',
-  TrainSetExampleFile: '../data/data_combine2019_1sentence/train_example.pkl.gz',
+#  TrainSetExampleFile: '../data/data_combine2019_1sentence/train_example.pkl.gz',
 
   # train set reature file path
-#  TrainSetFeatureFile: '../data/dev_debug_feature.pkl.gz',
+  TrainSetFeatureFile: '../data/dev_debug_feature.pkl.gz',
 #  TrainSetFeatureFile: '../data/data_correct_span/train_feature.pkl.gz',
-  TrainSetFeatureFile: '../data/data_combine2019_1sentence/train_feature.pkl.gz',
+#  TrainSetFeatureFile: '../data/data_combine2019_1sentence/train_feature.pkl.gz',
 
   # dev set example file path
-#  DevSetExampleFile: '../data/dev_debug_example.pkl.gz',
+  DevSetExampleFile: '../data/dev_debug_example.pkl.gz',
 #  DevSetExampleFile: '../data/data_correct_span/dev_example.pkl.gz',
-  DevSetExampleFile: '../data/data_combine2019_1sentence/dev_example.pkl.gz',
+#  DevSetExampleFile: '../data/data_combine2019_1sentence/dev_example.pkl.gz',
 
   # dev set reature file path
-#  DevSetFeatureFile: '../data/dev_debug_feature.pkl.gz',
+  DevSetFeatureFile: '../data/dev_debug_feature.pkl.gz',
 #  DevSetFeatureFile: '../data/data_correct_span/dev_feature.pkl.gz',
-  DevSetFeatureFile: '../data/data_combine2019_1sentence/dev_feature.pkl.gz',
+#  DevSetFeatureFile: '../data/data_combine2019_1sentence/dev_feature.pkl.gz',
   }
 
 ################################################################################
@@ -38,7 +38,7 @@ DataSet: {
 # word embedding type
 # 'pretrained': default, pre-trained word vectors loaded from word_embedding_file
 # 'bert': use the BERT model
-word_embedding_type: 'bert'
+word_embedding_type: 'albert'
 
 # word embedding file
 word_embedding_file: ''
@@ -53,14 +53,14 @@ word_embedding_trainable: true
 
 BERT: {
   # vocabulary file for the pretrained model
-#  vocab_file: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\vocab.txt',
-  vocab_file: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/vocab.txt',
+  vocab_file: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\vocab.txt',
+#  vocab_file: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/vocab.txt',
 #  vocab_file: 'C:\Works\PretrainedModel\structbert_base_zh_tf\vocab.txt',
 #  vocab_file: '/home/jiangwei/work/bert/structbert_base_zh_tf/vocab.txt',
 
   # initial checkpoint of BERT model
-#  init_checkpoint: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\bert_model.ckpt',
-  init_checkpoint: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/bert_model.ckpt',
+  init_checkpoint: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\bert_model.ckpt',
+#  init_checkpoint: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/bert_model.ckpt',
 #  init_checkpoint: 'C:\Works\PretrainedModel\structbert_base_zh_tf\structbert_model.ckpt',
 #  init_checkpoint: '/home/jiangwei/work/bert/structbert_base_zh_tf/structbert_model.ckpt',
 
@@ -91,6 +91,46 @@ BERT: {
   # number: layer number
   # start-end: from layer start to layer end (included)
   frozen_layers: ['embedding', '0-10']
+  }
+
+ALBERT: {
+  # vocabulary file for the pretrained model
+  vocab_file: 'C:\Works\PretrainedModel\albert_large_zh\vocab.txt',
+#  vocab_file: '/home/jiangwei/work/albert/albert_large_zh/vocab.txt',
+
+  # initial checkpoint of BERT model
+  init_checkpoint: 'C:\Works\PretrainedModel\albert_large_zh\albert_model.ckpt',
+#  init_checkpoint: '/home/jiangwei/work/albert/albert_large_zh/albert_model.ckpt',
+
+  # bert model configurations
+  albert_config: {
+    "attention_probs_dropout_prob": 0.0,
+    "directionality": "bidi",
+    "hidden_act": "gelu",
+    "hidden_dropout_prob": 0.0,
+    "hidden_size": 1024,
+    "embedding_size": 128,
+    "initializer_range": 0.02,
+    "intermediate_size": 4096,
+    "max_position_embeddings": 512,
+    "num_attention_heads": 16,
+    "num_hidden_layers": 24,
+    "pooler_fc_size": 768,
+    "pooler_num_attention_heads": 12,
+    "pooler_num_fc_layers": 3,
+    "pooler_size_per_head": 128,
+    "pooler_type": "first_token_transform",
+    "type_vocab_size": 2,
+    "vocab_size": 21128,
+    "ln_type":"postln"
+  },
+
+  # frozen bert layers, only used when word_embedding_trainable is true
+  # default: empty
+  # 'embedding': embedding layer,
+  # 'encoder': encoder layer
+  # 'pooler': pooler layer
+  frozen_layers: ['embedding']
   }
 
 ################################################################################

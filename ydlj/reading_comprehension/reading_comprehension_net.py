@@ -22,6 +22,7 @@ from reading_comprehension.utils.convert_answer import convert_to_tokens
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../libs'))
 from bert import modeling as bert_modeling
 from bert import optimization, tokenization, run_classifier
+from albert import modeling as albert_modeling
 
 
 def pooling(token_embedding, pool_type, keepdims=False):
@@ -228,6 +229,29 @@ class ReadingComprehensionModel:
                         for layer in range(start, end):
                             self.bert_frozen_layers.append('bert/encoder/layer_%d/' % layer)
 
+        elif self.word_embed_type == 'albert':
+            # ALBERT configurations
+            self.albert = config.get('ALBERT', {})
+            self.albert_config = albert_modeling.AlbertConfig.from_dict(self.albert['albert_config'])
+            self.vocab_size = self.albert_config.vocab_size
+            self.init_embeddings = None
+
+            if os.path.isfile(self.albert.get('vocab_file', '')):
+                vocab_file = self.albert['vocab_file']
+            else:
+                vocab_file = os.path.join(os.path.dirname(__file__), 'configs', 'vocab.txt')
+
+            self.bert_tokenizer = tokenization.FullTokenizer(vocab_file=vocab_file, do_lower_case=True)
+
+            self.bert_frozen_layers = []
+            for item in self.albert.get('frozen_layers', []):
+                if item == 'embedding':
+                    self.bert_frozen_layers.append('bert/embeddings/')
+                elif item == 'encoder':
+                    self.bert_frozen_layers.append('bert/encoder/')
+                elif item == 'pooler':
+                    self.bert_frozen_layers.append('bert/pooler/')
+
         self.answer_type_embedding_type = config.get('answer_type_embedding_type', 'FirstPoolDense')
         self.answer_type_embed_size = config.get('answer_type_embed_size', 200)
         self.answer_type_use_query_embedding_only = config.get('answer_type_use_query_embedding_only', False)
@@ -345,11 +369,24 @@ class ReadingComprehensionModel:
                 is_training=self.is_training,
                 input_ids=tokens,
                 input_mask=input_mask,
-                token_type_ids=tf.zeros(tf.shape(tokens), tf.int32),
+                token_type_ids=tf.zeros(tf.shape(tokens), tf.int32),  # TODO: use segment ID
                 use_one_hot_embeddings=False,
                 scope='bert'
             )
             return bert_model.get_sequence_output()
+
+        elif self.word_embed_type == 'albert':
+            # the original BERT model cannot to use placeholder self.is_training.
+            albert_model = albert_modeling.AlbertModel(
+                config=self.albert_config,
+                is_training=self.is_training,
+                input_ids=tokens,
+                input_mask=input_mask,
+                token_type_ids=tf.zeros(tf.shape(tokens), tf.int32),  # TODO: use segment ID
+                use_one_hot_embeddings=False,
+                scope='bert'
+            )
+            return albert_model.get_sequence_output()
 
         else:
             return tf.nn.embedding_lookup(self.embeddings, tokens)
@@ -1055,6 +1092,12 @@ class ReadingComprehensionModel:
              ) = bert_modeling.get_assignment_map_from_checkpoint(
                 tf.trainable_variables(), self.bert['init_checkpoint'])
             tf.train.init_from_checkpoint(self.bert['init_checkpoint'], assignment_map)
+        elif self.word_embed_type == 'albert' and self.albert.get('init_checkpoint'):
+            # load the pretrained albert model parameters
+            (assignment_map, initialized_variable_names
+             ) = albert_modeling.get_assignment_map_from_checkpoint(
+                tf.trainable_variables(), self.albert['init_checkpoint'])
+            tf.train.init_from_checkpoint(self.albert['init_checkpoint'], assignment_map)
 
         # bert_params = sum([np.prod(v.shape) for v in tf.trainable_variables() if v.name.startswith('bert')])
         # lstm_params = sum([np.prod(v.shape) for v in tf.trainable_variables() if v.name.startswith('BiLSTM')])
@@ -1064,7 +1107,7 @@ class ReadingComprehensionModel:
 
     def get_trainable_variables(self):
         tvars = tf.trainable_variables()
-        if self.word_embed_type == 'bert':
+        if self.word_embed_type in ['bert', 'albert']:
             if self.word_embed_trainable:
                 # filter out bert frozen layers
                 tvars = [v for v in tvars
