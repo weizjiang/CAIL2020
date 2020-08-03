@@ -13,11 +13,14 @@ import yaml
 from tflearn.data_utils import pad_sequences
 import re
 import json
+import gzip
+import pickle
 
 from reading_comprehension.utils import checkmate as cm
 from reading_comprehension.utils.pipelines import token_to_index as tokenize
 from reading_comprehension.utils.data_helpers import get_label_using_scores_by_threshold, cal_metric_batch, cal_F
 from reading_comprehension.utils.convert_answer import convert_to_tokens
+from reading_comprehension.data_process import InputFeatures, Example
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../libs'))
 from bert import modeling as bert_modeling
@@ -1175,8 +1178,26 @@ class ReadingComprehensionModel:
         update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
         self.train_op = tf.group([train_op, update_ops], name='train_op')
 
+    def episode_iter_path(self, data_set_path, episode_size=None, shuffle=True, max_input_len=None, keep_invalid=True):
+        """Generate batches from file/directory"""
+
+        if os.path.isdir(data_set_path):
+            file_list = [os.path.join(data_set_path, file) for file in os.listdir(data_set_path)
+                         if file.endswith('.pkl.gz')]
+            if shuffle:
+                np.random.shuffle(file_list)
+        elif os.path.isfile(data_set_path) and data_set_path.endswith('.pkl.gz'):
+            file_list = [data_set_path]
+
+        for subset_file in file_list:
+            with gzip.open(subset_file, 'rb') as f:
+                features = pickle.load(f)
+
+            yield from self.episode_iter(features, episode_size, shuffle, max_input_len, keep_invalid)
+
     def episode_iter(self, data_set, episode_size=None, shuffle=True, max_input_len=None, keep_invalid=True):
-        """Generate batch vec_data. """
+        """Generate batches from data list"""
+
         num_sample = len(data_set)
         if episode_size is None:
             episode_size = self.batch_size
@@ -1396,7 +1417,11 @@ class ReadingComprehensionModel:
             threads = tf.train.start_queue_runners(sess=self.session, coord=coord)
 
             for epoch in range(1, epochs + 1):
-                for batch in self.episode_iter(train_set, keep_invalid=False):
+                if type(train_set) is str and os.path.exists(train_set):
+                    batches = self.episode_iter_path(train_set, keep_invalid=False)
+                else:
+                    batches = self.episode_iter(train_set, keep_invalid=False)
+                for batch in batches:
                     (span_start_pos, span_end_pos, span_start_prob, span_end_prob, answer_type_prob, support_fact_prob,
                      span_loss, answer_type_loss, support_fact_loss, reg_loss, loss, lr, _, global_step
                      ) = self.session.run(

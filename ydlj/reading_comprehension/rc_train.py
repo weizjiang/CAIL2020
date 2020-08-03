@@ -47,8 +47,12 @@ if __name__ == '__main__':
     RCModel = ReadingComprehensionModel(config)
 
     DataSet = config.pop('DataSet')
-    with open_dataset_file(DataSet.get('TrainSetFeatureFile')) as f:
-        train_set_features = pickle.load(f)
+    train_set_feature_path = DataSet.get('TrainSetFeatureFile')
+    if os.path.isdir(train_set_feature_path):
+        train_set_features = train_set_feature_path
+    else:
+        with open_dataset_file(train_set_feature_path) as f:
+            train_set_features = pickle.load(f)
     with open_dataset_file(DataSet.get('DevSetFeatureFile')) as f:
         dev_set_features = pickle.load(f)
 

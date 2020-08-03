@@ -17,7 +17,7 @@ DataSet: {
   TrainSetExampleFile: '../data/data_combine2019_1sentence/train_example.pkl.gz',
 
   # train set reature file path
-#  TrainSetFeatureFile: '../data/dev_debug_feature.pkl.gz',
+#  TrainSetFeatureFile: '../data/dev_debug_features/',
 #  TrainSetFeatureFile: '../data/data_correct_span/train_feature.pkl.gz',
   TrainSetFeatureFile: '../data/data_combine2019_1sentence/train_feature.pkl.gz',
 
@@ -38,29 +38,30 @@ DataSet: {
 # word embedding type
 # 'pretrained': default, pre-trained word vectors loaded from word_embedding_file
 # 'bert': use the BERT model
-word_embedding_type: 'albert'
+# 'albert': use the ALBERT model
+word_embedding_type: 'bert'
 
 # word embedding file
 word_embedding_file: ''
 
 # word embedding size
 # for 'pretrained' embedding, it should match the size in word_embedding_file
-# for 'bert' embedding, it should equal to 'hidden_size'
-word_embedding_size: 1024
+# for 'bert' or 'albert' embedding, it should equal to 'hidden_size'
+word_embedding_size: 768
 
 # word ebedding trainable flag
 word_embedding_trainable: true
 
 BERT: {
   # vocabulary file for the pretrained model
-  vocab_file: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\vocab.txt',
-#  vocab_file: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/vocab.txt',
+#  vocab_file: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\vocab.txt',
+  vocab_file: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/vocab.txt',
 #  vocab_file: 'C:\Works\PretrainedModel\structbert_base_zh_tf\vocab.txt',
 #  vocab_file: '/home/jiangwei/work/bert/structbert_base_zh_tf/vocab.txt',
 
   # initial checkpoint of BERT model
-  init_checkpoint: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\bert_model.ckpt',
-#  init_checkpoint: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/bert_model.ckpt',
+#  init_checkpoint: 'C:\Works\PretrainedModel\chinese_roberta_wwm_ext_L-12_H-768_A-12\bert_model.ckpt',
+  init_checkpoint: '/home/jiangwei/work/bert/chinese_roberta_wwm_ext_L-12_H-768_A-12/bert_model.ckpt',
 #  init_checkpoint: 'C:\Works\PretrainedModel\structbert_base_zh_tf\structbert_model.ckpt',
 #  init_checkpoint: '/home/jiangwei/work/bert/structbert_base_zh_tf/structbert_model.ckpt',
 
