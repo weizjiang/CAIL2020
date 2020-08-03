@@ -361,28 +361,31 @@ class ReadingComprehensionModel:
         else:
             self.embeddings = None
 
-    def token_embedding_layer(self, tokens, input_mask):
+    def token_embedding_layer(self, tokens, input_mask, segment_ids=None):
+        if segment_ids is None:
+            segment_ids = tf.zeros(tf.shape(tokens), tf.int32)
+
         if self.word_embed_type == 'bert':
-            # the original BERT model cannot to use placeholder self.is_training.
+            # the original BERT model cannot use placeholder self.is_training.
             bert_model = bert_modeling.BertModel(
                 config=self.bert_config,
                 is_training=self.is_training,
                 input_ids=tokens,
                 input_mask=input_mask,
-                token_type_ids=tf.zeros(tf.shape(tokens), tf.int32),  # TODO: use segment ID
+                token_type_ids=segment_ids,
                 use_one_hot_embeddings=False,
                 scope='bert'
             )
             return bert_model.get_sequence_output()
 
         elif self.word_embed_type == 'albert':
-            # the original BERT model cannot to use placeholder self.is_training.
+            # the original ALBERT model cannot use placeholder self.is_training.
             albert_model = albert_modeling.AlbertModel(
                 config=self.albert_config,
                 is_training=self.is_training,
                 input_ids=tokens,
                 input_mask=input_mask,
-                token_type_ids=tf.zeros(tf.shape(tokens), tf.int32),  # TODO: use segment ID
+                token_type_ids=segment_ids,
                 use_one_hot_embeddings=False,
                 scope='bert'
             )
@@ -606,21 +609,24 @@ class ReadingComprehensionModel:
         # for [CLS] token
         first_token_mask = tf.cast(tf.range(input_len) < 1, tf.float32) + tf.zeros([batch_size, input_len])
 
-        # --------------------------------------------------------------------------------------------------------------
-        # token embedding layer
-
-        # get the word embeddings
-        # batch_size x input_length x hidden_size
-        token_embedding = self.token_embedding_layer(self.input_sentence, self.input_mask)
-
-        # --------------------------------------------------------------------------------------------------------------
-        # sentence (and entity) embedding layer
-
         # query sentence length, including [CLS] token, excluding 2 [SEP] tokens
         query_sentence_length = tf.cast(tf.reduce_sum(self.input_mask - contex_sentences_mask, axis=1, keepdims=True),
                                         tf.int32) - 2
         query_mask = tf.cast(tf.expand_dims(tf.range(input_len), axis=0) < query_sentence_length, tf.float32)
         query_mask = query_mask - first_token_mask
+
+        # --------------------------------------------------------------------------------------------------------------
+        # token embedding layer
+
+        # the first [SEP] is in segment 0
+        segment_ids = tf.cast(tf.expand_dims(tf.range(input_len), axis=0) > query_sentence_length, tf.int32)
+
+        # get the word embeddings
+        # batch_size x input_length x hidden_size
+        token_embedding = self.token_embedding_layer(self.input_sentence, self.input_mask, segment_ids)
+
+        # --------------------------------------------------------------------------------------------------------------
+        # sentence (and entity) embedding layer
 
         # sentence-token mapping including query and context sentences (and entities)
         # batch_size x input_length x (1+num_sentence+num_entity)
