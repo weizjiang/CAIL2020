@@ -163,8 +163,7 @@ class AlbertModel(object):
 
     Args:
       config: `AlbertConfig` instance.
-      is_training: bool. true for training model, false for eval model. Controls
-        whether dropout will be applied.
+      is_training: bool tensor. Controls whether dropout will be applied.
       input_ids: int32 Tensor of shape [batch_size, seq_length].
       input_mask: (optional) int32 Tensor of shape [batch_size, seq_length].
       token_type_ids: (optional) int32 Tensor of shape [batch_size, seq_length].
@@ -179,9 +178,6 @@ class AlbertModel(object):
         is invalid.
     """
     config = copy.deepcopy(config)
-    if not is_training:
-      config.hidden_dropout_prob = 0.0
-      config.attention_probs_dropout_prob = 0.0
 
     input_shape = get_shape_list(input_ids, expected_rank=2)
     batch_size = input_shape[0]
@@ -193,7 +189,7 @@ class AlbertModel(object):
     if token_type_ids is None:
       token_type_ids = tf.zeros(shape=[batch_size, seq_length], dtype=tf.int32)
 
-    with tf.variable_scope(scope, default_name="bert"):
+    with tf.variable_scope(scope, default_name="bert", reuse=tf.AUTO_REUSE):
       with tf.variable_scope("embeddings"):
         # Perform embedding lookup on the word ids.
         (self.word_embedding_output,
@@ -209,6 +205,7 @@ class AlbertModel(object):
         # normalize and perform dropout.
         self.embedding_output = embedding_postprocessor(
             input_tensor=self.word_embedding_output,
+            is_training=is_training,
             use_token_type=True,
             token_type_ids=token_type_ids,
             token_type_vocab_size=config.type_vocab_size,
@@ -225,6 +222,7 @@ class AlbertModel(object):
         # `sequence_output` shape = [batch_size, seq_length, hidden_size].
         self.all_encoder_layers = transformer_model(
             input_tensor=self.embedding_output,
+            is_training=is_training,
             attention_mask=input_mask,
             hidden_size=config.hidden_size,
             num_hidden_layers=config.num_hidden_layers,
@@ -409,11 +407,12 @@ def get_assignment_map_from_checkpoint(tvars, init_checkpoint, num_of_group=0):
   return (assignment_map, initialized_variable_names)
 
 
-def dropout(input_tensor, dropout_prob):
+def dropout(input_tensor, is_training, dropout_prob):
   """Perform dropout.
 
   Args:
     input_tensor: float Tensor.
+    is_training: bool Tensor.
     dropout_prob: Python float. The probability of dropping out a value (NOT of
       *keeping* a dimension as in `tf.nn.dropout`).
 
@@ -423,7 +422,7 @@ def dropout(input_tensor, dropout_prob):
   if dropout_prob is None or dropout_prob == 0.0:
     return input_tensor
 
-  output = tf.nn.dropout(input_tensor, rate=dropout_prob)
+  output = tf.layers.dropout(input_tensor, rate=dropout_prob, training=is_training)
   return output
 
 
@@ -433,10 +432,10 @@ def layer_norm(input_tensor, name=None):
       inputs=input_tensor, begin_norm_axis=-1, begin_params_axis=-1, scope=name)
 
 
-def layer_norm_and_dropout(input_tensor, dropout_prob, name=None):
+def layer_norm_and_dropout(input_tensor, is_training, dropout_prob, name=None):
   """Runs layer normalization followed by dropout."""
   output_tensor = layer_norm(input_tensor, name)
-  output_tensor = dropout(output_tensor, dropout_prob)
+  output_tensor = dropout(output_tensor, is_training, dropout_prob)
   return output_tensor
 
 
@@ -527,6 +526,7 @@ def embedding_lookup(input_ids,
 
 
 def embedding_postprocessor(input_tensor,
+                            is_training,
                             use_token_type=False,
                             token_type_ids=None,
                             token_type_vocab_size=16,
@@ -542,6 +542,7 @@ def embedding_postprocessor(input_tensor,
   Args:
     input_tensor: float Tensor of shape [batch_size, seq_length,
       embedding_size].
+    is_training: bool Tensor
     use_token_type: bool. Whether to add embeddings for `token_type_ids`.
     token_type_ids: (optional) int32 Tensor of shape [batch_size, seq_length].
       Must be specified if `use_token_type` is True.
@@ -625,7 +626,7 @@ def embedding_postprocessor(input_tensor,
                                        position_broadcast_shape)
       output += position_embeddings
 
-  output = layer_norm_and_dropout(output, dropout_prob)
+  output = layer_norm_and_dropout(output, is_training, dropout_prob)
   return output
 
 
@@ -789,7 +790,7 @@ def dense_layer_2d(input_tensor,
     return ret
 
 
-def dot_product_attention(q, k, v, bias, dropout_rate=0.0):
+def dot_product_attention(q, k, v, bias, is_training, dropout_rate=0.0):
   """Dot-product attention.
 
   Args:
@@ -799,6 +800,7 @@ def dot_product_attention(q, k, v, bias, dropout_rate=0.0):
     v: Tensor with shape [..., length_kv, depth_v] Leading dimensions must
       match with q.
     bias: bias Tensor (see attention_bias())
+    is_training: bool Tensor
     dropout_rate: a float.
 
   Returns:
@@ -831,12 +833,13 @@ def dot_product_attention(q, k, v, bias, dropout_rate=0.0):
     adder = 0.0
 
   attention_probs = tf.nn.softmax(logits, name="attention_probs")
-  attention_probs = dropout(attention_probs, dropout_rate)
+  attention_probs = dropout(attention_probs, is_training, dropout_rate)
   return tf.matmul(attention_probs, v)
 
 
 def attention_layer(from_tensor,
                     to_tensor,
+                    is_training,
                     attention_mask=None,
                     num_attention_heads=1,
                     query_act=None,
@@ -927,12 +930,13 @@ def attention_layer(from_tensor,
         attention_mask, [batch_size, 1, to_seq_length, 1])
     # 'new_embeddings = [B, N, F, H]'
   new_embeddings = dot_product_attention(q, k, v, attention_mask,
-                                         attention_probs_dropout_prob)
+                                         is_training, attention_probs_dropout_prob)
 
   return tf.transpose(new_embeddings, [0, 2, 1, 3])
 
 
 def attention_ffn_block(layer_input,
+                        is_training,
                         hidden_size=768,
                         attention_mask=None,
                         num_attention_heads=1,
@@ -948,6 +952,7 @@ def attention_ffn_block(layer_input,
   Args:
     layer_input: float Tensor of shape [batch_size, from_seq_length,
       from_width].
+    is_training: bool Tensor
     hidden_size: (optional) int, size of hidden layer.
     attention_mask: (optional) int32 Tensor of shape [batch_size, seq_length].
       The values should be 1 or 0. The attention scores will effectively be set
@@ -973,6 +978,7 @@ def attention_ffn_block(layer_input,
       attention_output = attention_layer(
           from_tensor=layer_input,
           to_tensor=layer_input,
+          is_training=is_training,
           attention_mask=attention_mask,
           num_attention_heads=num_attention_heads,
           attention_probs_dropout_prob=attention_probs_dropout_prob,
@@ -990,7 +996,7 @@ def attention_ffn_block(layer_input,
           None,
           use_einsum=use_einsum,
           name="dense")
-      attention_output = dropout(attention_output, hidden_dropout_prob)
+      attention_output = dropout(attention_output, is_training, hidden_dropout_prob)
   attention_output = layer_norm(attention_output + layer_input)
   with tf.variable_scope("ffn_1"):
     with tf.variable_scope("intermediate"):
@@ -1011,12 +1017,13 @@ def attention_ffn_block(layer_input,
             use_einsum=use_einsum,
             num_attention_heads=num_attention_heads,
             name="dense")
-      ffn_output = dropout(ffn_output, hidden_dropout_prob)
+      ffn_output = dropout(ffn_output, is_training, hidden_dropout_prob)
   ffn_output = layer_norm(ffn_output + attention_output)
   return ffn_output
 
 
 def transformer_model(input_tensor,
+                      is_training,
                       attention_mask=None,
                       hidden_size=768,
                       num_hidden_layers=12,
@@ -1042,6 +1049,7 @@ def transformer_model(input_tensor,
 
   Args:
     input_tensor: float Tensor of shape [batch_size, seq_length, hidden_size].
+    is_training: bool Tensor
     attention_mask: (optional) int32 Tensor of shape [batch_size, seq_length],
       with 1 for positions that can be attended to and 0 in positions that
       should not be.
@@ -1097,6 +1105,7 @@ def transformer_model(input_tensor,
             with tf.variable_scope("inner_group_%d" % inner_group_idx):
               layer_output = attention_ffn_block(
                   layer_input=layer_output,
+                  is_training=is_training,
                   hidden_size=hidden_size,
                   attention_mask=attention_mask,
                   num_attention_heads=num_attention_heads,

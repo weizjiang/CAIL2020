@@ -353,7 +353,7 @@ class ReadingComprehensionModel:
         # init embedding matrix
         if self.word_embed_type == 'pretrained' and isinstance(self.init_embeddings, np.ndarray):
             self.embeddings = tf.Variable(self.init_embeddings, name='Embedding', trainable=self.word_embed_trainable)
-        elif self.word_embed_type != 'bert':
+        elif self.word_embed_type not in ['bert', 'albert']:
             self.embeddings = tf.get_variable("Embedding", [self.vocab_size, self.word_embed_size],
                                               initializer=tf.random_uniform_initializer(minval=-0.1, maxval=0.1,
                                                                                         dtype=tf.float32),

@@ -12,24 +12,24 @@ DataSet: {
   TrainPercentage: -1,
 
   # train set example file path
-  TrainSetExampleFile: '../data/dev_debug_example.pkl.gz',
+#  TrainSetExampleFile: '../data/dev_debug_example.pkl.gz',
 #  TrainSetExampleFile: '../data/data_correct_span/train_example.pkl.gz',
-#  TrainSetExampleFile: '../data/data_combine2019_1sentence/train_example.pkl.gz',
+  TrainSetExampleFile: '../data/data_combine2019_1sentence/train_example.pkl.gz',
 
   # train set reature file path
-  TrainSetFeatureFile: '../data/dev_debug_feature.pkl.gz',
+#  TrainSetFeatureFile: '../data/dev_debug_feature.pkl.gz',
 #  TrainSetFeatureFile: '../data/data_correct_span/train_feature.pkl.gz',
-#  TrainSetFeatureFile: '../data/data_combine2019_1sentence/train_feature.pkl.gz',
+  TrainSetFeatureFile: '../data/data_combine2019_1sentence/train_feature.pkl.gz',
 
   # dev set example file path
-  DevSetExampleFile: '../data/dev_debug_example.pkl.gz',
+#  DevSetExampleFile: '../data/dev_debug_example.pkl.gz',
 #  DevSetExampleFile: '../data/data_correct_span/dev_example.pkl.gz',
-#  DevSetExampleFile: '../data/data_combine2019_1sentence/dev_example.pkl.gz',
+  DevSetExampleFile: '../data/data_combine2019_1sentence/dev_example.pkl.gz',
 
   # dev set reature file path
-  DevSetFeatureFile: '../data/dev_debug_feature.pkl.gz',
+#  DevSetFeatureFile: '../data/dev_debug_feature.pkl.gz',
 #  DevSetFeatureFile: '../data/data_correct_span/dev_feature.pkl.gz',
-#  DevSetFeatureFile: '../data/data_combine2019_1sentence/dev_feature.pkl.gz',
+  DevSetFeatureFile: '../data/data_combine2019_1sentence/dev_feature.pkl.gz',
   }
 
 ################################################################################
@@ -46,7 +46,7 @@ word_embedding_file: ''
 # word embedding size
 # for 'pretrained' embedding, it should match the size in word_embedding_file
 # for 'bert' embedding, it should equal to 'hidden_size'
-word_embedding_size: 768
+word_embedding_size: 1024
 
 # word ebedding trainable flag
 word_embedding_trainable: true
@@ -95,34 +95,34 @@ BERT: {
 
 ALBERT: {
   # vocabulary file for the pretrained model
-  vocab_file: 'C:\Works\PretrainedModel\albert_large_zh\vocab.txt',
-#  vocab_file: '/home/jiangwei/work/albert/albert_large_zh/vocab.txt',
+#  vocab_file: 'C:\Works\PretrainedModel\albert_large\vocab_chinese.txt',
+  vocab_file: '/home/jiangwei/work/albert/albert_large/vocab_chinese.txt',
 
   # initial checkpoint of BERT model
-  init_checkpoint: 'C:\Works\PretrainedModel\albert_large_zh\albert_model.ckpt',
-#  init_checkpoint: '/home/jiangwei/work/albert/albert_large_zh/albert_model.ckpt',
+#  init_checkpoint: 'C:\Works\PretrainedModel\albert_large\model.ckpt-best',
+  init_checkpoint: '/home/jiangwei/work/albert/albert_large/model.ckpt-best',
 
   # bert model configurations
   albert_config: {
-    "attention_probs_dropout_prob": 0.0,
-    "directionality": "bidi",
-    "hidden_act": "gelu",
-    "hidden_dropout_prob": 0.0,
-    "hidden_size": 1024,
+    "attention_probs_dropout_prob": 0,
+    "hidden_act": "relu",
+    "hidden_dropout_prob": 0,
     "embedding_size": 128,
+    "hidden_size": 1024,
     "initializer_range": 0.02,
     "intermediate_size": 4096,
     "max_position_embeddings": 512,
     "num_attention_heads": 16,
     "num_hidden_layers": 24,
-    "pooler_fc_size": 768,
-    "pooler_num_attention_heads": 12,
-    "pooler_num_fc_layers": 3,
-    "pooler_size_per_head": 128,
-    "pooler_type": "first_token_transform",
+    "num_hidden_groups": 1,
+    "net_structure_type": 0,
+    "layers_to_keep": [],
+    "gap_size": 0,
+    "num_memory_blocks": 0,
+    "inner_group_num": 1,
+    "down_scale_factor": 1,
     "type_vocab_size": 2,
-    "vocab_size": 21128,
-    "ln_type":"postln"
+    "vocab_size": 21128
   },
 
   # frozen bert layers, only used when word_embedding_trainable is true
@@ -248,7 +248,7 @@ answer_pred_use_support_fact_embedding: 'SentenceEntityMean'
 # 'None': use token embedding (maybe extended with sentence and/or entity embeddings)
 # 'Transformer': Transformer
 # 'SelfAttention': self-attention
-answer_span_predict_model: 'Transformer'
+answer_span_predict_model: 'None'
 
 # transformer parameters for answer span predict model
 answer_span_transformer: {
