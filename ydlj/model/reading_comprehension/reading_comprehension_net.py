@@ -725,11 +725,13 @@ class ReadingComprehensionModel:
 
             for cur_id in ids:
                 orig_id = cur_id
-                # convert to original id for examples with shifted context
+                # convert to original case id and sentence ids for examples with shifted context
+                sentence_id_shift = 0
                 if type(cur_id) is str:
-                    m = re.search(r'^(.+)_SHIFT\d+$', orig_id)
+                    m = re.search(r'^(.+)_SHIFT(\d+)$', orig_id)
                     if m:
                         orig_id = m.group(1)
+                        sentence_id_shift = int(m.group(2))
                     m = re.search(r'^INT\((\d+)\)$', orig_id)
                     if m:
                         orig_id = int(m.group(1))
@@ -737,7 +739,12 @@ class ReadingComprehensionModel:
                 if orig_id not in answer_dict or answer_dict[orig_id] == 'unknown':
                     # over-write previously predicted answer only if it's 'unknown'
                     answer_dict[orig_id] = answer_dict_batch[cur_id]
-                    support_fact_dict[orig_id] = support_fact_dict_batch[cur_id]
+                    if sentence_id_shift > 0 and len(support_fact_dict_batch[cur_id]) > 0:
+                        # shift the sentence ids. This only supports single paragrpah context.
+                        support_fact_dict[orig_id] = [
+                            (sent[0], sent[1] + sentence_id_shift) for sent in support_fact_dict_batch[cur_id]]
+                    else:
+                        support_fact_dict[orig_id] = support_fact_dict_batch[cur_id]
 
         if test_per_sample:
             for sample_idx, cur_id in enumerate(ids):

@@ -160,7 +160,6 @@ def read_examples(full_file, max_seq_length=None):
             if context_length > max_context_length:
                 max_shift_sent = int(max_context_length*num_sentence/context_length/2)
                 new_context_start_sent = 0
-                shift_id = 0
                 while new_context_start_sent < num_sentence:
                     new_context_length = 0
                     sent_idx = 0
@@ -183,7 +182,7 @@ def read_examples(full_file, max_seq_length=None):
                     new_case = case.copy()
                     if type(case['_id']) is int:
                         new_case['_id'] = 'INT(%d)' % case['_id']
-                    new_case['_id'] += '_SHIFT%d' % shift_id
+                    new_case['_id'] += '_SHIFT%d' % new_context_start_sent
                     new_case['context'] = paragraphs
                     expanded_data.append(new_case)
 
@@ -195,7 +194,6 @@ def read_examples(full_file, max_seq_length=None):
                     else:
                         new_context_start_sent = num_sentence - 1 - np.max(
                             np.flatnonzero(np.cumsum(sentence_lengths[::-1]) <= max_context_length))
-                    shift_id += 1
             else:
                 expanded_data.append(case)
         full_data = expanded_data
