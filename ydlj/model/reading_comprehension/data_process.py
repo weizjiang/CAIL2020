@@ -158,7 +158,7 @@ def read_examples(full_file, max_seq_length=None):
             num_sentence = len(sentence_lengths)
             max_context_length = max_seq_length - 3 - len(case['question'])
             if context_length > max_context_length:
-                max_shift_sent = int(num_sentence/2)
+                max_shift_sent = int(max_context_length*num_sentence/context_length/2)
                 new_context_start_sent = 0
                 shift_id = 0
                 while new_context_start_sent < num_sentence:
