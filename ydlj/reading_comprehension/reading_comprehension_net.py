@@ -1944,13 +1944,27 @@ class ReadingComprehensionModel:
 
             answer_dict_batch = {key: value.replace(" ", "") for key, value in answer_dict_batch.items()}
 
-            answer_dict.update(answer_dict_batch)
-
+            support_fact_dict_batch = {}
             for sample_idx, support_facts in enumerate(support_fact_predicts):
                 cur_id = ids[sample_idx]
-                support_fact_sentences = [
+                support_fact_dict_batch[cur_id] = [
                     example_dict[cur_id].sent_names[sentence_idx] for sentence_idx in support_facts]
-                support_fact_dict.update({cur_id: support_fact_sentences})
+
+            for cur_id in ids:
+                orig_id = cur_id
+                # convert to original id for examples with shifted context
+                if type(cur_id) is str:
+                    m = re.search(r'^(.+)_SHIFT\d+$', orig_id)
+                    if m:
+                        orig_id = m.group(1)
+                    m = re.search(r'^INT\(\d+\)$', orig_id)
+                    if m:
+                        orig_id = int(m.group(1))
+
+                if orig_id not in answer_dict or answer_dict[orig_id] == 'unknown':
+                    # over-write previously predicted answer only if it's 'unknown'
+                    answer_dict[orig_id] = answer_dict_batch[cur_id]
+                    support_fact_dict[orig_id] = support_fact_dict_batch[cur_id]
 
             if test_per_sample:
                 for sample_idx, cur_id in enumerate(ids):

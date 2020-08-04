@@ -11,6 +11,7 @@ import pickle
 from tqdm import tqdm
 from jieba.posseg import dt
 import re
+import numpy as np
 
 class Example(object):
 
@@ -139,10 +140,65 @@ def get_entity_spans(text):
     return entity_spans
 
 
-def read_examples(full_file):
+def read_examples(full_file, max_seq_length=None):
 
     with open(full_file, 'r', encoding='utf-8') as reader:
         full_data = json.load(reader)    
+
+    if max_seq_length is not None and max_seq_length > 0:
+        # Separate the over-long context into multiple replica so that the whole context can be processed with the limit
+        # The support fact sentences are not processed, so this should only be used for testing.
+        expanded_data = []
+        for case in full_data:
+            sentence_lengths = []
+            for para in case['context']:
+                for sent in para[1]:
+                    sentence_lengths.append(len(sent))
+            context_length = sum(sentence_lengths)
+            num_sentence = len(sentence_lengths)
+            max_context_length = max_seq_length - 3 - len(case['question'])
+            if context_length > max_context_length:
+                max_shift_sent = int(num_sentence/2)
+                new_context_start_sent = 0
+                shift_id = 0
+                while new_context_start_sent < num_sentence:
+                    new_context_length = 0
+                    sent_idx = 0
+                    paragraphs = []
+                    reach_limit = False
+                    for para in case['context']:
+                        para_sents = []
+                        for sent in para[1]:
+                            if sent_idx >= new_context_start_sent:
+                                para_sents.append(sent)
+                                new_context_length += len(sent)
+                                if new_context_length >= max_context_length:
+                                    reach_limit = True
+                                    break
+                            sent_idx += 1
+                        if len(para_sents) > 0:
+                            paragraphs.append([para[0], para_sents])
+                        if reach_limit:
+                            break
+                    new_case = case.copy()
+                    if type(case['_id']) is int:
+                        new_case['_id'] = 'INT(%d)' % case['_id']
+                    new_case['_id'] += '_SHIFT%d' % shift_id
+                    new_case['context'] = paragraphs
+                    expanded_data.append(new_case)
+
+                    if sent_idx >= num_sentence - 1:
+                        # reached the end
+                        break
+                    if sum(sentence_lengths[new_context_start_sent+max_shift_sent:]) >= max_context_length:
+                        new_context_start_sent = new_context_start_sent + max_shift_sent
+                    else:
+                        new_context_start_sent = num_sentence - 1 - np.max(
+                            np.flatnonzero(np.cumsum(sentence_lengths[::-1]) <= max_context_length))
+                    shift_id += 1
+            else:
+                expanded_data.append(case)
+        full_data = expanded_data
 
     def is_whitespace(c):
         if c == " " or c == "\t" or c == "\r" or c == "\n" or ord(c) == 0x202F:
@@ -539,6 +595,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
     tokenizer = tokenization.FullTokenizer(vocab_file=os.path.join(args.tokenizer_path, 'vocab.txt'),
                                            do_lower_case=True)
+
+    # examples = read_examples(full_file=args.full_data, max_seq_length=args.max_seq_length)
 
     if os.path.isfile(args.example_output):
         with gzip.open(args.example_output, 'rb') as f:
