@@ -372,6 +372,11 @@ num_epoch: 50
 # batch_size
 batch_size: 32
 
+# the uppper limit of single-sentence dataset batches in one epoch, ralative to multi-sentence batch number.
+# Single-sentence dataset cannot be used to train support facts.
+# -1 for no limit
+max_ratio_1sentence: 0.2
+
 # number of samples for each validation step
 validate_size: 400
 

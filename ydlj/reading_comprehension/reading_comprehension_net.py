@@ -306,6 +306,7 @@ class ReadingComprehensionModel:
         self.L2_Normalize = config.get('L2_Normalize', False)
 
         self.batch_size = config.get('batch_size', 200)
+        self.max_ratio_1sentence = config.get('max_ratio_1sentence', -1.0)
         self.save_period = config.get('save_period', 50)
         self.validate_period = config.get('validate_period', 20)
         self.validate_size = config.get('validate_size', 200)
@@ -1226,9 +1227,14 @@ class ReadingComprehensionModel:
                                         -np.ones(num_batch_2*episode_size - len(data_set_2_indices), dtype=np.int32)])
         data_set_2_indices = np.reshape(data_set_2_indices, (num_batch_2, episode_size))
 
-        data_set_indices = np.vstack([data_set_1_indices, data_set_2_indices])
+        if self.max_ratio_1sentence >= 0:
+            max_num_batch_data_set_1 = int(num_batch_2 * self.max_ratio_1sentence)
+        else:
+            max_num_batch_data_set_1 = num_batch_1
 
-        num_episode = num_batch_1 + num_batch_2
+        data_set_indices = np.vstack([data_set_1_indices[:max_num_batch_data_set_1], data_set_2_indices])
+
+        num_episode = min(num_batch_1, max_num_batch_data_set_1) + num_batch_2
 
         if shuffle:
             batch_indices = np.random.permutation(num_episode)
