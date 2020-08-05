@@ -27,13 +27,13 @@ if __name__ == '__main__':
     # RCModel.load_model(r'runs/rc_20200713-131312', 'B')
     # RCModel.load_model(r'runs/rc_20200713-151448', 'B')
     # RCModel.load_model(r'runs/rc_20200714-202143', 'B')
-    RCModel.load_model(r'runs/rc_20200715-172519', 'B')
+    RCModel.load_model(r'runs/rc_20200731-213550', 'B')
     # RCModel.load_model(r'runs/rc_20200715-193558', 'B')
 
     # test_set_feature_file = '../data/dev_feature.pkl.gz'
     # test_set_feature_file = '../data/train_feature.pkl.gz'
-    # test_set_feature_file = '../data/data_combine2019_1sentence/train_feature.pkl.gz'
-    test_set_feature_file = '../data/data_correct_span/dev_feature.pkl.gz'
+    test_set_feature_file = '../data/data_big_combine2019all_cmrc2018all_1sentence_augmented/dev_feature.pkl.gz'
+    # test_set_feature_file = '../data/data_correct_span/dev_feature.pkl.gz'
     
     with gzip.open(test_set_feature_file, 'rb') as f:
         test_set_features = pickle.load(f)

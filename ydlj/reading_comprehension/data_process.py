@@ -576,6 +576,9 @@ if __name__ == '__main__':
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../libs'))
     from bert import tokenization
 
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    from reading_comprehension.separate_train_data import save_to_folder
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--example_output", required=True, type=str)
     parser.add_argument("--feature_output", required=True, type=str)
@@ -596,18 +599,23 @@ if __name__ == '__main__':
 
     # examples = read_examples(full_file=args.full_data, max_seq_length=args.max_seq_length)
 
-    if os.path.isfile(args.example_output):
+    if os.path.isfile(args.example_output) and args.example_output.endswith('.pkl.gz'):
         with gzip.open(args.example_output, 'rb') as f:
             examples = pickle.load(f)
     else:
         examples = read_examples(full_file=args.full_data)
-        with gzip.open(args.example_output, 'wb') as fout:
-            pickle.dump(examples, fout)
+        if args.example_output.endswith('.pkl.gz'):
+            with gzip.open(args.example_output, 'wb') as fout:
+                pickle.dump(examples, fout)
 
     features = convert_examples_to_features(examples, tokenizer, max_seq_length=args.max_seq_length,
                                             max_query_length=50)
-    with gzip.open(args.feature_output, 'wb') as fout:
-        pickle.dump(features, fout)
+
+    if args.feature_output.endswith('.pkl.gz'):
+        with gzip.open(args.feature_output, 'wb') as fout:
+            pickle.dump(features, fout)
+    else:
+        save_to_folder(examples, features, args.example_output, args.feature_output)
 
 
 
