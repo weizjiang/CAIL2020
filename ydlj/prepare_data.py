@@ -465,6 +465,45 @@ def convert_cmrc2018_data(dataset='train', separate_paragraph=False):
     with open(converted_file, 'w', encoding='utf-8') as f_out:
         json.dump(converted_data, f_out, ensure_ascii=False, indent=4)
 
+
+def convert_ant_contract_data(dataset='dev'):
+    if dataset == 'dev':
+        input_file = r'C:\Works\DataSet\Ant_Contract\ant_contract_mrc_dev.json'
+        output_file = r'data\ant_contract.json'
+        converted_file = r'data\ant_contract_mrc_dev_converted.json'
+        id_prefix = ''
+
+    with open(input_file, 'r', encoding='utf-8') as f_in:
+        data = json.load(f_in)
+
+    # with open(output_file, 'w', encoding='utf-8') as f_out:
+    #     json.dump(data, f_out, ensure_ascii=False, indent=4)
+
+    converted_data = []
+    for item in data['data']:
+        for paragraph in item['paragraphs']:
+            context_text = paragraph['context'].replace('\n', '/')
+            for qa in paragraph['qas']:
+                # only one answer in train set
+                answer = qa['answers'][0]
+                context = [paragraph['id'], [context_text]]
+                supporting_facts = [[paragraph['id'], 0]]
+
+                qa_item = {
+                    '_id': id_prefix + qa['id'],
+                    'context': [context],
+                    'question': qa['question'],
+                    'answer': answer['text'].replace('\n', '/'),
+                    'answer_start': answer['answer_start'],
+                    'supporting_facts': supporting_facts
+                }
+
+                converted_data.append(qa_item)
+
+    with open(converted_file, 'w', encoding='utf-8') as f_out:
+        json.dump(converted_data, f_out, ensure_ascii=False, indent=4)
+
+
 def generate_test_file():
     data_file = r'data/dev.json'
     with open(data_file, 'r', encoding='utf-8') as f_in:
@@ -659,13 +698,15 @@ if __name__ == '__main__':
 
     # combine_support_facts()
 
-    combine_data_set()
+    # combine_data_set()
 
     # generate_dev_result()
 
     # convert_cail2019_data(dataset='train', separate_paragraph=True)
 
     # convert_cmrc2018_data(dataset='dev', separate_paragraph=False)
+
+    convert_ant_contract_data(dataset='dev')
 
     # augment_data_single_hop()
 
