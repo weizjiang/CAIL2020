@@ -12,7 +12,7 @@ tokenizer_path='/home/jiangwei/work/bert/chinese_roberta_wwm_ext_pytorch/'
 python data_process.py \
     --tokenizer_path=$tokenizer_path \
     --full_data=${INPUT_TRAIN_FILE} \
-    --example_output=${OUTPUT_DIR}/train_examples \
+    --example_output=${OUTPUT_DIR}/train_example.pkl.gz \
     --feature_output=${OUTPUT_DIR}/train_features \
 
 python data_process.py \

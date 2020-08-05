@@ -620,4 +620,7 @@ if __name__ == '__main__':
         with gzip.open(args.feature_output, 'wb') as fout:
             pickle.dump(features, fout)
     else:
-        save_to_folder(examples, features, args.example_output, args.feature_output)
+        if not args.example_output.endswith('.pkl.gz'):
+            save_to_folder(features, args.feature_output, examples, args.example_output)
+        else:
+            save_to_folder(features, args.feature_output)
