@@ -288,6 +288,7 @@ class ReadingComprehensionModel:
 
         self.support_fact_loss_all_samples = config.get('support_fact_loss_all_samples', True)
         self.support_fact_loss_type = config.get('support_fact_loss_type', 'Mean')
+        self.keep_support_fact_for_unknown = config.get('keep_support_fact_for_unknown', False)
         self.span_loss_samples = config.get('span_loss_samples', 'NonSpan3Pos')
         self.span_loss_weight = config.get('span_loss_weight', 1.0)
         self.answer_type_loss_weight = config.get('answer_type_loss_weight', 1.0)
@@ -1339,8 +1340,8 @@ class ReadingComprehensionModel:
                     is_sp_flag = j in case.sup_fact_ids
                     start, end = sent_span
                     if start < end:
-                        if q_type[sample_idx] != 3:
-                            # set support fact flag only for non-unknown types
+                        if q_type[sample_idx] != 3 or self.keep_support_fact_for_unknown:
+                            # set support fact flag only for non-unknown types if not keep_support_fact_for_unknown
                             is_support[sample_idx, j] = int(is_sp_flag)
                         all_mapping[sample_idx, start:end + 1, j] = 1
                         start_mapping[sample_idx, j, start] = 1
@@ -1795,6 +1796,12 @@ class ReadingComprehensionModel:
                 },
                 val_batch
             )
+
+            # answer_type_and_span = np.vstack([np.arange(len(val_batch['q_type'])),
+            #                                   val_batch['q_type'],
+            #                                   answer_type_predicts,
+            #                                   span_start_predicts,
+            #                                   span_end_predicts]).T
 
             val_span_loss_list.append(val_step_span_loss)
             val_answer_type_loss_list.append(val_step_answer_type_loss)

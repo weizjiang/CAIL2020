@@ -195,7 +195,8 @@ if __name__ == '__main__':
     # prediction_file = r'../reading_comprehension/results/result_rc_20200801-122142_threshold_0.5_restrict_span.json'
     # prediction_file = r'../reading_comprehension/results/result_rc_20200801-152842_threshold_0.5_restrict_span.json'
     # prediction_file = r'../reading_comprehension/results/result_rc_20200802-183021_threshold_0.5_restrict_span.json'
-    prediction_file = r'../reading_comprehension/results/result_rc_20200802-184044_threshold_0.5_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200802-184044_threshold_0.5_restrict_span.json'
+    prediction_file = r'../reading_comprehension/results/result_rc_20200803-205745_threshold_0.5_restrict_span.json'
 
     gold_file = r'../data/dev_big.json'
 

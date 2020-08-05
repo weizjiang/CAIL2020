@@ -94,6 +94,29 @@ class ReadingComprehensionModel:
                         for layer in range(start, end):
                             self.bert_frozen_layers.append('bert/encoder/layer_%d/' % layer)
 
+        elif self.word_embed_type == 'albert':
+            # ALBERT configurations
+            self.albert = config.get('ALBERT', {})
+            self.albert_config = albert_modeling.AlbertConfig.from_dict(self.albert['albert_config'])
+            self.vocab_size = self.albert_config.vocab_size
+            self.init_embeddings = None
+
+            if os.path.isfile(self.albert.get('vocab_file', '')):
+                vocab_file = self.albert['vocab_file']
+            else:
+                vocab_file = os.path.join(os.path.dirname(__file__), 'configs', 'vocab.txt')
+
+            self.bert_tokenizer = tokenization.FullTokenizer(vocab_file=vocab_file, do_lower_case=True)
+
+            self.bert_frozen_layers = []
+            for item in self.albert.get('frozen_layers', []):
+                if item == 'embedding':
+                    self.bert_frozen_layers.append('bert/embeddings/')
+                elif item == 'encoder':
+                    self.bert_frozen_layers.append('bert/encoder/')
+                elif item == 'pooler':
+                    self.bert_frozen_layers.append('bert/pooler/')
+
         self.answer_type_embedding_type = config.get('answer_type_embedding_type', 'FirstPoolDense')
         self.answer_type_embed_size = config.get('answer_type_embed_size', 200)
         self.answer_type_use_query_embedding_only = config.get('answer_type_use_query_embedding_only', False)
@@ -127,6 +150,7 @@ class ReadingComprehensionModel:
 
         self.support_fact_loss_all_samples = config.get('support_fact_loss_all_samples', True)
         self.support_fact_loss_type = config.get('support_fact_loss_type', 'Mean')
+        self.keep_support_fact_for_unknown = config.get('keep_support_fact_for_unknown', False)
         self.span_loss_samples = config.get('span_loss_samples', 'NonSpan3Pos')
         self.span_loss_weight = config.get('span_loss_weight', 1.0)
         self.answer_type_loss_weight = config.get('answer_type_loss_weight', 1.0)
@@ -145,13 +169,14 @@ class ReadingComprehensionModel:
         self.L2_Normalize = config.get('L2_Normalize', False)
 
         self.batch_size = config.get('batch_size', 200)
+        self.max_ratio_1sentence = config.get('max_ratio_1sentence', -1.0)
         self.save_period = config.get('save_period', 50)
         self.validate_period = config.get('validate_period', 20)
         self.validate_size = config.get('validate_size', 200)
 
-
     def episode_iter(self, data_set, episode_size=None, shuffle=True, max_input_len=None, keep_invalid=True):
-        """Generate batch vec_data. """
+        """Generate batches from data list"""
+
         num_sample = len(data_set)
         if episode_size is None:
             episode_size = self.batch_size
@@ -180,9 +205,14 @@ class ReadingComprehensionModel:
                                         -np.ones(num_batch_2*episode_size - len(data_set_2_indices), dtype=np.int32)])
         data_set_2_indices = np.reshape(data_set_2_indices, (num_batch_2, episode_size))
 
-        data_set_indices = np.vstack([data_set_1_indices, data_set_2_indices])
+        if self.max_ratio_1sentence >= 0:
+            max_num_batch_data_set_1 = int(num_batch_2 * self.max_ratio_1sentence)
+        else:
+            max_num_batch_data_set_1 = num_batch_1
 
-        num_episode = num_batch_1 + num_batch_2
+        data_set_indices = np.vstack([data_set_1_indices[:max_num_batch_data_set_1], data_set_2_indices])
+
+        num_episode = min(num_batch_1, max_num_batch_data_set_1) + num_batch_2
 
         if shuffle:
             batch_indices = np.random.permutation(num_episode)
@@ -287,8 +317,8 @@ class ReadingComprehensionModel:
                     is_sp_flag = j in case.sup_fact_ids
                     start, end = sent_span
                     if start < end:
-                        if q_type[sample_idx] != 3:
-                            # set support fact flag only for non-unknown types
+                        if q_type[sample_idx] != 3 or self.keep_support_fact_for_unknown:
+                            # set support fact flag only for non-unknown types if not keep_support_fact_for_unknown
                             is_support[sample_idx, j] = int(is_sp_flag)
                         all_mapping[sample_idx, start:end + 1, j] = 1
                         start_mapping[sample_idx, j, start] = 1
@@ -746,16 +776,16 @@ class ReadingComprehensionModel:
                     else:
                         support_fact_dict[orig_id] = support_fact_dict_batch[cur_id]
 
-        if test_per_sample:
-            for sample_idx, cur_id in enumerate(ids):
-                print('----------- {}'.format(cur_id))
-                answer_correct = answer_dict[cur_id] == example_dict[cur_id].orig_answer_text
-                print('context: {}'.format(''.join(example_dict[cur_id].doc_tokens)))
-                print('question: {}'.format(example_dict[cur_id].question_text))
-                print('predict answer: {} {}'.format(answer_dict[cur_id], '✔' if answer_correct else '✘'))
-                print("gold answer: {}".format(example_dict[cur_id].orig_answer_text))
-                print('predict support facts: {}'.format([item[1] for item in support_fact_dict[cur_id]]))
-                print("gold support facts: {}".format(example_dict[cur_id].sup_fact_id))
+            if test_per_sample:
+                for sample_idx, cur_id in enumerate(ids):
+                    print('----------- {}'.format(cur_id))
+                    answer_correct = answer_dict[cur_id] == example_dict[cur_id].orig_answer_text
+                    print('context: {}'.format(''.join(example_dict[cur_id].doc_tokens)))
+                    print('question: {}'.format(example_dict[cur_id].question_text))
+                    print('predict answer: {} {}'.format(answer_dict[cur_id], '✔' if answer_correct else '✘'))
+                    print("gold answer: {}".format(example_dict[cur_id].orig_answer_text))
+                    print('predict support facts: {}'.format([item[1] for item in support_fact_dict[cur_id]]))
+                    print("gold support facts: {}".format(example_dict[cur_id].sup_fact_id))
 
         prediction = {'answer': answer_dict, 'sp': support_fact_dict}
         os.makedirs(os.path.dirname(result_file), exist_ok=True)

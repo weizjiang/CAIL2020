@@ -314,6 +314,12 @@ span_loss_samples: 'NonSpan3Pos'
 # if false, only consider samples with more than one sentences
 support_fact_loss_all_samples: true
 
+# whether to keep support fact labels for unknown data in training
+# This happens when context is truncated, and the answer may become unknown.
+# true: keep support facts
+# false: set support fact list empty
+keep_support_fact_for_unknown: true
+
 # how to combine the support fact loss on different sentences
 # 'Mean': averge over all sentences
 # 'Sum': sum over all sentences
