@@ -485,15 +485,20 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length, max_query_
         if len(sup_fact_ids) != len(example.sup_fact_id):
             failed += 1
 
-        if (ans_type == 0 and ''.join(all_doc_tokens).find(example.orig_answer_text) < 0) or (
-                ans_type != 3 and len(sup_fact_ids) != len(example.sup_fact_id)):
-            # convert to 'unknown' in case answer span is missing or support fact is truncated
-            # note that the condition 'len(ans_start_position) == 0' is not sufficient for answer check since there may
+        if ans_type == 0 and ''.join(all_doc_tokens).find(example.orig_answer_text) < 0:
+            # convert 'span' to 'unknown' in case the answer span is missing
+            # Note that the condition 'len(ans_start_position) == 0' is not sufficient for answer check since there may
             # be labeling errors (on support facts).
             ans_type = 3
             ans_start_position = []
             ans_end_position = []
             sup_fact_ids = []
+        elif ans_type in [1, 2] and len(sup_fact_ids) != len(example.sup_fact_id):
+            # convert 'yes'/'no' to 'unknown' in case the support fact is truncated
+            # Note that sup_fact_ids is not reset. It's left to model configuration to decide how to use this imcomplete
+            # support fact labels.
+            # For 'span' answers, no special processing for support fact truncation.
+            ans_type = 3
 
         if type(example.qas_id) is int and example.qas_id < 0:
             print("qid {}".format(example.qas_id))
@@ -608,14 +613,3 @@ if __name__ == '__main__':
                                             max_query_length=50)
     with gzip.open(args.feature_output, 'wb') as fout:
         pickle.dump(features, fout)
-
-
-
-
-
-
-
-
-
-
-
