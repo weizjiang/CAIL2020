@@ -147,6 +147,7 @@ sentence_embed_size: 256
 # 'MaxPoolDense': max pooling and full connect layer
 # 'AvgPoolDense': average pooling and full connect layer
 # 'AvgMaxPoolDense': concatenate average pooling and max pooling, followed by a full connect layer
+# 'SharedBiLSTM_2EndPoolDense': shared BiLSTM, pooling from 2 ends for each sentence/entity
 sentence_embedding_type: 'MaxPoolDense'
 
 # dropout rate

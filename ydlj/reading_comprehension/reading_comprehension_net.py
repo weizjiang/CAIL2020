@@ -64,6 +64,18 @@ def pooling(token_embedding, pool_type, keepdims=False):
                 pool_out = token_embedding[0]
             else:
                 pool_out = token_embedding[:, 0]
+    elif pool_type == 'Last':
+        # use the embedding of the last token only
+        if keepdims:
+            if pool_dimension == 0:
+                pool_out = token_embedding[-1:]
+            else:
+                pool_out = token_embedding[:, -1:]
+        else:
+            if pool_dimension == 0:
+                pool_out = token_embedding[-1]
+            else:
+                pool_out = token_embedding[:, -1]
     else:
         raise NotImplementedError
     return pool_out
@@ -275,7 +287,7 @@ class ReadingComprehensionModel:
             self.CCNN_ConvStride = CnnConfig.get('ConvStride', [1])
             self.CCNN_PoolSize = CnnConfig.get('PoolSize', [16])
             self.CCNN_FcActivation = CnnConfig.get('FcActivation', 'none')
-        elif self.sentence_embedding_type == 'BiLSTM':
+        elif self.sentence_embedding_type in ['BiLSTM', 'SharedBiLSTM_2EndPoolDense']:
             BiLSTM_Config = config.get('BiLSTM', {})
             self.lstm_hidden_size = BiLSTM_Config.get('hidden_size', 1024)
             self.lstm_num_layer = BiLSTM_Config.get('num_layer', 1)
@@ -471,7 +483,18 @@ class ReadingComprehensionModel:
             )
             return final_outputs, final_state
 
-    def sentence_embedding_model(self, token_embedding, sentence_mask, embedding_type, embedding_size, name=''):
+    def sentence_embedding_model(self, token_embedding, sentence_mask, embedding_type, embedding_size=128, name='',
+                                 output_sequence=False):
+        """
+        get sentence embeddings
+        :param token_embedding:
+        :param sentence_mask:
+        :param embedding_type:
+        :param embedding_size: int, not-used if output_sequence is True
+        :param name:
+        :param output_sequence: bool, whether to return sequence of the same length as input, only valid for BiLSTM
+        :return:
+        """
         if name is not None and len(name) > 0:
             name_appendix = '_' + name
         else:
@@ -576,6 +599,10 @@ class ReadingComprehensionModel:
                         else:
                             lstm_in = lstm_out
 
+                if output_sequence:
+                    # [batch_size, sequence_length, lstm_hidden_size, 2]
+                    return tf.stack((outputs_fw, outputs_bw), axis=3)
+
                 if self.lstm_attention_enable:
                     fc_in = tf.concat((decoder_state.cell_state.c, decoder_state.cell_state.h), 1)
                 else:
@@ -632,6 +659,16 @@ class ReadingComprehensionModel:
 
         # --------------------------------------------------------------------------------------------------------------
         # sentence (and entity) embedding layer
+
+        if self.sentence_embedding_type == 'SharedBiLSTM_2EndPoolDense':
+            # pass all tokens into a shared BiLSTM layer
+            # Note that to support the following pooling layer, sentence_token_embedding_use_full_dimension should be
+            # False, and sentence_pool_early should be True. Otherwise pooling for the last token will be complicated.
+            # batch_size x input_length x lstm_hidden_size x 2
+            shared_bilstm_out = self.sentence_embedding_model(token_embedding, self.input_mask,
+                                                              embedding_type='BiLSTM',
+                                                              name='Shared',
+                                                              output_sequence=True)
 
         # sentence-token mapping including query and context sentences (and entities)
         # batch_size x input_length x (1+num_sentence+num_entity)
@@ -692,22 +729,46 @@ class ReadingComprehensionModel:
                     # if sentence_token_embedding_with_null:
                     #     return tf.less(sentence_idx, num_sent_entity)
                     # else:
-                    #     # this cannot support "sentence + entity" case, which may have nulls in the middle
+                    #     # this cannot support "sentence + entity" case, which may have nulls in the middle. For this
+                    #     # case, pad zeros instead (see below).
                     #     return tf.cond(tf.less(sentence_idx, num_sent_entity),
                     #                    lambda: tf.greater(all_sentence_lengths[sample_idx, sentence_idx], 0),
                     #                    lambda: tf.constant(False, tf.bool))
 
                 def sentence_loop_body(sentence_idx, sentence_ary):
-                    # sentence_length x hidden_size
-                    sample_sentence_token_embedding = tf.gather(
-                        token_embedding[sample_idx],
-                        tf.squeeze(tf.where(all_sentence_mapping[sample_idx, :, sentence_idx] > 0.5), axis=1))
+                    if self.sentence_embedding_type == 'SharedBiLSTM_2EndPoolDense':
+                        # sentence_length x lstm_hidden_size x 2
+                        sample_sentence_token_embedding = tf.gather(
+                            shared_bilstm_out[sample_idx],
+                            tf.squeeze(tf.where(all_sentence_mapping[sample_idx, :, sentence_idx] > 0.5), axis=1))
+                    else:
+                        # sentence_length x hidden_size
+                        sample_sentence_token_embedding = tf.gather(
+                            token_embedding[sample_idx],
+                            tf.squeeze(tf.where(all_sentence_mapping[sample_idx, :, sentence_idx] > 0.5), axis=1))
 
-                    if sentence_pool_early and self.sentence_embedding_type.endswith('PoolDense'):
+                    if sentence_pool_early and self.sentence_embedding_type == 'SharedBiLSTM_2EndPoolDense':
+                        pool_out_fw = pooling(sample_sentence_token_embedding[:, :, 0],
+                                              pool_type='Last',
+                                              keepdims=True)
+                        pool_out_bw = pooling(sample_sentence_token_embedding[:, :, 1],
+                                              pool_type='First',
+                                              keepdims=True)
+                        # 1 x lstm_hidden_size*2
+                        pool_out = tf.concat([pool_out_fw, pool_out_bw], axis=1)
+
+                        # pad zeros for null sentence
+                        sample_sentence_token_embedding = tf.cond(
+                            tf.greater(all_sentence_lengths[sample_idx, sentence_idx], 0),
+                            lambda: pool_out,
+                            lambda: tf.zeros([1, self.lstm_hidden_size * 2], dtype=tf.float32))
+
+                    elif sentence_pool_early and self.sentence_embedding_type.endswith('PoolDense'):
                         # 1 x hidden_size
                         pool_out = pooling(sample_sentence_token_embedding,
                                            pool_type=self.sentence_embedding_type.replace('PoolDense', ''),
                                            keepdims=True)
+                        # pad zeros for null sentence
                         sample_sentence_token_embedding = tf.cond(
                             tf.greater(all_sentence_lengths[sample_idx, sentence_idx], 0),
                             lambda: pool_out,
