@@ -197,8 +197,10 @@ BiLSTM: {
 # support fact reasoning model type
 # 'None': use sentence embedding directly
 # 'Transformer': Transformer
+# 'Transformer_2Type': transformer of two types, one for sentences and the other for entities
 # 'SelfAttention': self-attention
-support_fact_reasoning_model: 'Transformer'
+# 'SelfAttention_2Type': self-attention of two types, one for sentences and the other for entities
+support_fact_reasoning_model: 'Transformer_2Type'
 
 # transformer parameters for support fact reasoning model
 support_fact_transformer: {
@@ -212,7 +214,7 @@ support_fact_transformer: {
   hidden_act: 'gelu',
   hidden_dropout_prob: 0.1,
   attention_probs_dropout_prob: 0.1,
-  share_layer_weights: true
+  share_layer_weights: 2
 }
 
 # self-attention parameters for support fact reasoning model
@@ -223,15 +225,15 @@ support_fact_self_attention: {
   num_sigmoid_attention_heads: 4,
   num_tanh_attention_heads: 4,
   attention_probs_dropout_prob: 0.1,
-  share_layer_weights: true
+  share_layer_weights: 2
 }
 
 # sentence-entity connection type
 # 'Full': all sentence and entities are fully connected
-# 'Tree': entities are only connected to the sentence it belongs to; no entity-to-entity connection
+# 'Tree': entities are only connected to the sentence it belongs to, and themselves, not to any other entity
 # 'Bush': entities are only connected to the sentence it belongs to; entities belonging to the same sentence are fully
 #         connected
-sentence_entity_connect_type: 'Full'
+sentence_entity_connect_type: 'Tree'
 
 ################################################################################
 # answer type and span predition layer
@@ -267,7 +269,7 @@ answer_span_transformer: {
   hidden_act: 'gelu',
   hidden_dropout_prob: 0.1,
   attention_probs_dropout_prob: 0.1,
-  share_layer_weights: false
+  share_layer_weights: 0
 }
 
 # self-attention parameters for answer span predict model
@@ -278,7 +280,7 @@ answer_span_self_attention: {
   num_sigmoid_attention_heads: 3,
   num_tanh_attention_heads: 3,
   attention_probs_dropout_prob: 0.1,
-  share_layer_weights: false
+  share_layer_weights: 0
 }
 
 

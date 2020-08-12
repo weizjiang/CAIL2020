@@ -779,7 +779,7 @@ def transformer_model(input_tensor,
                       attention_probs_dropout_prob=0.1,
                       initializer_range=0.02,
                       do_return_all_layers=False,
-                      share_layer_weights=False):
+                      share_layer_weights=0):
   """Multi-headed, multi-layer Transformer from "Attention is All You Need".
 
   This is almost an exact implementation of the original Transformer encoder.
@@ -793,8 +793,8 @@ def transformer_model(input_tensor,
   Args:
     input_tensor: float Tensor of shape [batch_size, seq_length, hidden_size].
     attention_mask: (optional) int32 Tensor of shape [batch_size, seq_length,
-      seq_length], with 1 for positions that can be attended to and 0 in
-      positions that should not be.
+      seq_length(, ?)], with 1 for positions that can be attended to and 0 in
+      positions that should not be. For 4-d input, it's indexed by layer cyclicly.
     is_training: bool. tensor
     hidden_size: int. Hidden size of the Transformer.
     num_hidden_layers: int. Number of layers (blocks) in the Transformer.
@@ -813,7 +813,8 @@ def transformer_model(input_tensor,
       normal).
     do_return_all_layers: Whether to also return all layers or just the final
       layer.
-    share_layer_weights: Whether to share weights for different layers
+    share_layer_weights: int. Share weight for every number of layers defined by this parameter.
+      0 for no sharing; 1 for sharing all layers.
 
   Returns:
     float Tensor of shape [batch_size, seq_length, hidden_size], the final
@@ -832,6 +833,7 @@ def transformer_model(input_tensor,
   batch_size = input_shape[0]
   seq_length = input_shape[1]
   input_width = input_shape[2]
+  attention_mask_shape = tf.shape(attention_mask)
 
   # The Transformer performs sum residuals on all layers so the input needs
   # to be the same as the hidden size.
@@ -847,7 +849,11 @@ def transformer_model(input_tensor,
 
   all_layer_outputs = []
   for layer_idx in range(num_hidden_layers):
-    layer_scope = "layer" if share_layer_weights else "layer_%d" % layer_idx
+    layer_scope = "layer_%d" % (layer_idx if share_layer_weights == 0 else layer_idx % share_layer_weights)
+    if attention_mask is not None and attention_mask_shape.shape[0] == 4:
+      layer_attention_mask = attention_mask[:, :, :, tf.mod(layer_idx, attention_mask_shape[3])]
+    else:
+      layer_attention_mask = attention_mask
     with tf.variable_scope(layer_scope):
       layer_input = prev_output
 
@@ -858,7 +864,7 @@ def transformer_model(input_tensor,
               from_tensor=layer_input,
               to_tensor=layer_input,
               is_training=is_training,
-              attention_mask=attention_mask,
+              attention_mask=layer_attention_mask,
               num_attention_heads=num_attention_heads,
               num_sigmoid_attention_heads=num_sigmoid_attention_heads,
               num_tanh_attention_heads=num_tanh_attention_heads,

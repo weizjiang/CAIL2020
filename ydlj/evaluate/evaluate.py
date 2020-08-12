@@ -198,7 +198,17 @@ if __name__ == '__main__':
     # prediction_file = r'../reading_comprehension/results/result_rc_20200802-184044_threshold_0.5_restrict_span.json'
     # prediction_file = r'../reading_comprehension/results/result_rc_20200803-205745_threshold_0.5_restrict_span.json'
     # prediction_file = r'../reading_comprehension/results/result_rc_20200804-210301_threshold_0.5_restrict_span.json'
-    prediction_file = r'../reading_comprehension/results/result_rc_20200804-211313_threshold_0.5_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200804-211313_threshold_0.5_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200805-203754_threshold_0.5_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200805-204554_threshold_0.5_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200805-162856_threshold_0.5_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200806-115812_threshold_0.5_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200806-175529_threshold_0.5_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200807-142854_threshold_0.5_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200807-212547_threshold_0.5_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200808-191119_threshold_0.5_restrict_span.json'
+    prediction_file = r'../reading_comprehension/results/result_rc_20200809-212409_threshold_0.5_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200809-215147_threshold_0.5_restrict_span.json'
 
     gold_file = r'../data/dev_big.json'
 

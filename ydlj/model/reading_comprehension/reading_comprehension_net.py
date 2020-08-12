@@ -137,7 +137,7 @@ class ReadingComprehensionModel:
             self.CCNN_ConvStride = CnnConfig.get('ConvStride', [1])
             self.CCNN_PoolSize = CnnConfig.get('PoolSize', [16])
             self.CCNN_FcActivation = CnnConfig.get('FcActivation', 'none')
-        elif self.sentence_embedding_type == 'BiLSTM':
+        elif self.sentence_embedding_type in ['BiLSTM', 'SharedBiLSTM_2EndPoolDense']:
             BiLSTM_Config = config.get('BiLSTM', {})
             self.lstm_hidden_size = BiLSTM_Config.get('hidden_size', 1024)
             self.lstm_num_layer = BiLSTM_Config.get('num_layer', 1)

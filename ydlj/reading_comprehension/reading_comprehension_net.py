@@ -91,13 +91,13 @@ def multi_layer_self_attention(input_tensor,
                                num_tanh_attention_heads=0,
                                attention_probs_dropout_prob=0.1,
                                initializer_range=0.02,
-                               share_layer_weights=False):
+                               share_layer_weights=0):
     """Multi-layer self attention, based on BERT implemenation.
     Args:
     input_tensor: float Tensor of shape [batch_size, seq_length, hidden_size].
     attention_mask: (optional) int32 Tensor of shape [batch_size, seq_length,
-      seq_length], with 1 for positions that can be attended to and 0 in
-      positions that should not be.
+      seq_length(, ?)], with 1 for positions that can be attended to and 0 in
+      positions that should not be. For 4-d input, it's indexed by layer cyclicly.
     is_training: bool. tensor
     hidden_size: int. Hidden size of the self-attention.
     num_hidden_layers: int. Number of layers (blocks) in the self.
@@ -109,7 +109,8 @@ def multi_layer_self_attention(input_tensor,
       probabilities.
     initializer_range: float. Range of the initializer (stddev of truncated
       normal).
-    share_layer_weights: Whether to share weights for different layers
+    share_layer_weights: int. Share weight for every number of layers defined by this parameter.
+      0 for no sharing; 1 for sharing all layers.
 
     Returns:
     float Tensor of shape [batch_size, seq_length, hidden_size], the final
@@ -128,11 +129,16 @@ def multi_layer_self_attention(input_tensor,
     batch_size = input_shape[0]
     seq_length = input_shape[1]
     input_width = input_shape[2]
+    attention_mask_shape = tf.shape(attention_mask)
 
     prev_output = bert_modeling.reshape_to_matrix(input_tensor)
 
     for layer_idx in range(num_hidden_layers):
-        layer_scope = "layer" if share_layer_weights else "layer_%d" % layer_idx
+        layer_scope = "layer_%d" % (layer_idx if share_layer_weights == 0 else layer_idx % share_layer_weights)
+        if attention_mask is not None and attention_mask_shape.shape[0] == 4:
+            layer_attention_mask = attention_mask[:, :, :, tf.mod(layer_idx, attention_mask_shape[3])]
+        else:
+            layer_attention_mask = attention_mask
         with tf.variable_scope(layer_scope):
             layer_input = prev_output
 
@@ -142,7 +148,7 @@ def multi_layer_self_attention(input_tensor,
                         from_tensor=layer_input,
                         to_tensor=layer_input,
                         is_training=is_training,
-                        attention_mask=attention_mask,
+                        attention_mask=layer_attention_mask,
                         num_attention_heads=num_attention_heads,
                         num_sigmoid_attention_heads=num_sigmoid_attention_heads,
                         num_tanh_attention_heads=num_tanh_attention_heads,
@@ -872,37 +878,89 @@ class ReadingComprehensionModel:
             support_fact_embedding = sentence_embedding
 
         else:
-            if self.sentence_entity_connect_type == 'Full':
-                # batch_size x (1+num_sentence+num_entity)
-                all_sentences_entities = tf.reduce_any(all_sentence_mapping > 0.5, axis=1)
-                sentence_entity_attention_mask = tf.logical_and(tf.expand_dims(all_sentences_entities, axis=2),
-                                                                tf.expand_dims(all_sentences_entities, axis=1))
-            elif self.sentence_entity_connect_type in ['Tree', 'Bush']:
-                # batch_size x (1+num_sentence)
-                all_sentences = tf.reduce_any(all_sentence_mapping[:, :, :num_sentence+1] > 0.5, axis=1)
-                # all sententences are connected
-                # batch_size x (1+num_sentence) x (1+num_sentence)
-                sentence_attention_mask = tf.cast(tf.logical_and(tf.expand_dims(all_sentences, axis=2),
-                                                                 tf.expand_dims(all_sentences, axis=1)),
-                                                  tf.int32)
-                if self.sentence_entity_connect_type == 'Tree':
-                    # entities are not connected to entities
-                    entity_attention_mask = tf.zeros([batch_size, num_entity, num_entity], dtype=tf.int32)
-                elif self.sentence_entity_connect_type == 'Bush':
-                    # entities belonging to the same sentence are fully connected.
-                    entity_attention_mask = tf.matmul(tf.transpose(self.input_sent_entity_mapping, perm=[0, 2, 1]),
-                                                      self.input_sent_entity_mapping)
-                # entities are only connected to the sentence it belongs to.
-                sentence_entity_attention_mask = tf.concat(
-                    [tf.concat([sentence_attention_mask, self.input_sent_entity_mapping], axis=2),
-                     tf.concat([tf.transpose(self.input_sent_entity_mapping, perm=[0, 2, 1]),
-                                entity_attention_mask], axis=2)],
-                    axis=1
-                )
+            # batch_size x (1+num_sentence)
+            all_sentences = tf.reduce_any(all_sentence_mapping[:, :, :num_sentence + 1] > 0.5, axis=1)
+            # all sententences are fully connected, regardless of sentence_entity_connect_type
+            # batch_size x (1+num_sentence) x (1+num_sentence)
+            sentence_attention_mask = tf.cast(tf.logical_and(tf.expand_dims(all_sentences, axis=2),
+                                                             tf.expand_dims(all_sentences, axis=1)),
+                                              tf.int32)
+
+            # batch_size x num_entity
+            all_entities = tf.reduce_any(all_sentence_mapping[:, :, num_sentence + 1:] > 0.5, axis=1)
+
+            if self.sentence_entity_connect_type == 'Tree':
+                # # entities are not connected to entities
+                # entity_attention_mask = tf.zeros([batch_size, num_entity, num_entity], dtype=tf.int32)
+                # Change to: entities are not connected to any other entities, only to themselves
+                entity_attention_mask = tf.eye(num_entity, batch_shape=[batch_size], dtype=tf.int32)
+            elif self.sentence_entity_connect_type == 'Bush':
+                # entities belonging to the same sentence are fully connected.
+                entity_attention_mask = tf.matmul(tf.transpose(self.input_sent_entity_mapping, perm=[0, 2, 1]),
+                                                  self.input_sent_entity_mapping)
+            elif self.sentence_entity_connect_type == 'Full':
+                # all entities are fully connected.
+                entity_attention_mask = tf.cast(tf.logical_and(tf.expand_dims(all_entities, axis=2),
+                                                               tf.expand_dims(all_entities, axis=1)),
+                                                tf.int32)
+
+            if self.support_fact_reasoning_model.endswith('2Type'):
+                if self.sentence_entity_connect_type == 'Full':
+                    # batch_size x (1+num_sentence) x num_entity
+                    sentence_entity_full_mask = tf.cast(tf.logical_and(tf.expand_dims(all_sentences, axis=2),
+                                                                       tf.expand_dims(all_entities, axis=1)),
+                                                        tf.int32)
+                    # each sentence is connected to all other sentences and all entities
+                    sentence_entity_attention_mask = tf.concat([
+                        tf.concat([sentence_attention_mask, sentence_entity_full_mask], axis=2),
+                        tf.concat([tf.zeros([batch_size, num_entity, num_sentence + 1], dtype=tf.int32),
+                                   tf.eye(num_entity, batch_shape=[batch_size], dtype=tf.int32)], axis=2)
+                    ], axis=1)
+                    # each entity is connected to all sentences and all other entities.
+                    entity_sentence_attention_mask = tf.concat([
+                        tf.concat([tf.eye(num_sentence + 1, batch_shape=[batch_size], dtype=tf.int32),
+                                   tf.zeros([batch_size, num_sentence + 1, num_entity], dtype=tf.int32)], axis=2),
+                        tf.concat([tf.transpose(sentence_entity_full_mask, perm=[0, 2, 1]),
+                                   entity_attention_mask], axis=2)
+                    ], axis=1)
+                else:
+                    # sentencs are connected to others sentences and the entities they have
+                    sentence_entity_attention_mask = tf.concat(
+                        [tf.concat([sentence_attention_mask, self.input_sent_entity_mapping], axis=2),
+                         tf.concat([tf.zeros([batch_size, num_entity, num_sentence+1], dtype=tf.int32),
+                                    tf.eye(num_entity, batch_shape=[batch_size], dtype=tf.int32)], axis=2)
+                         ], axis=1
+                    )
+                    # entities are only connected to the sentence it belongs to.
+                    entity_sentence_attention_mask = tf.concat([
+                        tf.concat([tf.eye(num_sentence+1, batch_shape=[batch_size], dtype=tf.int32),
+                                   tf.zeros([batch_size, num_sentence+1, num_entity], dtype=tf.int32)], axis=2),
+                        tf.concat([tf.transpose(self.input_sent_entity_mapping, perm=[0, 2, 1]),
+                                   entity_attention_mask], axis=2)
+                    ], axis=1)
+
+                # stack two masks, they should be used alternatively
+                sentence_entity_attention_mask = tf.stack(
+                    [sentence_entity_attention_mask, entity_sentence_attention_mask], axis=3)
+
+            else:
+                if self.sentence_entity_connect_type == 'Full':
+                    # batch_size x (1+num_sentence+num_entity)
+                    all_sentences_entities = tf.reduce_any(all_sentence_mapping > 0.5, axis=1)
+                    sentence_entity_attention_mask = tf.logical_and(tf.expand_dims(all_sentences_entities, axis=2),
+                                                                    tf.expand_dims(all_sentences_entities, axis=1))
+                else:
+                    # entities are only connected to the sentence it belongs to.
+                    sentence_entity_attention_mask = tf.concat(
+                        [tf.concat([sentence_attention_mask, self.input_sent_entity_mapping], axis=2),
+                         tf.concat([tf.transpose(self.input_sent_entity_mapping, perm=[0, 2, 1]),
+                                    entity_attention_mask], axis=2)],
+                        axis=1
+                    )
 
             with tf.variable_scope("support_fact_model", reuse=tf.AUTO_REUSE):
 
-                if self.support_fact_reasoning_model == 'Transformer':
+                if self.support_fact_reasoning_model.startswith('Transformer'):
                     support_fact_embedding = bert_modeling.transformer_model(
                         sentence_embedding,
                         is_training=self.is_training,
@@ -921,7 +979,7 @@ class ReadingComprehensionModel:
                         share_layer_weights=self.support_fact_transformer['share_layer_weights']
                     )
 
-                elif self.support_fact_reasoning_model == 'SelfAttention':
+                elif self.support_fact_reasoning_model.startswith('SelfAttention'):
                     support_fact_embedding = multi_layer_self_attention(
                         sentence_embedding,
                         is_training=self.is_training,
