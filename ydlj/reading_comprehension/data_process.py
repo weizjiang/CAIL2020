@@ -142,8 +142,11 @@ def get_entity_spans(text):
 
 def read_examples(full_file, max_seq_length=None):
 
-    with open(full_file, 'r', encoding='utf-8') as reader:
-        full_data = json.load(reader)    
+    if type(full_file) is str and os.path.isfile(full_file):
+        with open(full_file, 'r', encoding='utf-8') as reader:
+            full_data = json.load(reader)
+    elif type(full_file) is list:
+        full_data = full_file
 
     if max_seq_length is not None and max_seq_length > 0:
         # Separate the over-long context into multiple replica so that the whole context can be processed with the limit

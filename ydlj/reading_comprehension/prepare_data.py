@@ -10,13 +10,13 @@ import numpy as np
 
 def separate_dev_set():
     # input_file = r'C:\Works\DataSet\CAIL\ydlj_small_data\train.json'
-    # train_data_file = r'data\train_small.json'
-    # dev_data_file = r'data\dev_small.json'
+    # train_data_file = r'..\data\train_small.json'
+    # dev_data_file = r'..\data\dev_small.json'
     # train_set_ratio = 0.8
 
     input_file = r'C:\Works\DataSet\CAIL\ydlj_big_data\train.json'
-    train_data_file = r'data\train_big.json'
-    dev_data_file = r'data\dev_big.json'
+    train_data_file = r'..\data\train_big.json'
+    dev_data_file = r'..\data\dev_big.json'
     train_set_ratio = 0.9
 
     with open(input_file, 'r', encoding='utf-8') as f_in:
@@ -35,11 +35,11 @@ def separate_dev_set():
 def combine_support_facts():
     # combine the support facts so that the answer only appears in one sentence
 
-    input_file = r'data\train_big.json'
-    output_file = r'data\train_big_combine_answer.json'
+    input_file = r'..\data\train_big.json'
+    output_file = r'..\data\train_big_combine_answer.json'
 
-    # input_file = r'data\dev_big.json'
-    # output_file = r'data\dev_big_combine_answer.json'
+    # input_file = r'..\data\dev_big.json'
+    # output_file = r'..\data\dev_big_combine_answer.json'
 
     with open(input_file, 'r', encoding='utf-8') as f_in:
         data = json.load(f_in)
@@ -90,33 +90,33 @@ def combine_support_facts():
 
 
 def combine_data_set():
-    # input_file_1 = r'data\train_small.json'
-    # input_file_2 = r'data\train_big.json'
-    # output_file = r'data\train_2020.json'
+    # input_file_1 = r'..\data\train_small.json'
+    # input_file_2 = r'..\data\train_big.json'
+    # output_file = r'..\data\train_2020.json'
 
-    # input_file_1 = r'data\dev_small.json'
-    # input_file_2 = r'data\dev_big.json'
-    # output_file = r'data\dev_2020.json'
+    # input_file_1 = r'..\data\dev_small.json'
+    # input_file_2 = r'..\data\dev_big.json'
+    # output_file = r'..\data\dev_2020.json'
 
     # id_prefix_1 = 'cail2020_small_'
     # id_prefix_2 = 'cail2020_big_'
 
-    # input_file_1 = r'data\data2020_combine2019all_cmrc2018all_1sentence_augmented\train.json'
-    # # input_file_2 = r'data\all_2019_1sentence_converted_augmented.json'
-    # input_file_2 = r'data\cmrc2018_all_1sentence_converted_augmented.json'
+    # input_file_1 = r'..\data\data2020_combine2019all_cmrc2018all_1sentence_augmented\train.json'
+    # # input_file_2 = r'..\data\all_2019_1sentence_converted_augmented.json'
+    # input_file_2 = r'..\data\cmrc2018_all_1sentence_converted_augmented.json'
     # output_file = input_file_1
     #
     # id_prefix_1 = ''
     # id_prefix_2 = ''
 
-    # input_file_1 = r'data\data_big_combine2019all_cmrc2018all_1sentence\train.json'
-    # # input_file_2 = r'data\all_2019_1sentence_converted.json'
-    # input_file_2 = r'data\cmrc2018_all_1sentence_converted.json'
+    # input_file_1 = r'..\data\data_big_combine2019all_cmrc2018all_1sentence\train.json'
+    # # input_file_2 = r'..\data\all_2019_1sentence_converted.json'
+    # input_file_2 = r'..\data\cmrc2018_all_1sentence_converted.json'
     # output_file = input_file_1
 
-    input_file_1 = r'data\data_big_combine2019all_cmrc2018all_1sentence_augmented\train.json'
-    # input_file_2 = r'data\all_2019_1sentence_converted_augmented.json'
-    input_file_2 = r'data\cmrc2018_all_1sentence_converted_augmented.json'
+    input_file_1 = r'..\data\data_big_combine2019all_cmrc2018all_1sentence_augmented\train.json'
+    # input_file_2 = r'..\data\all_2019_1sentence_converted_augmented.json'
+    input_file_2 = r'..\data\cmrc2018_all_1sentence_converted_augmented.json'
     output_file = input_file_1
 
     # id_prefix_1 = 'cail2020_'
@@ -141,10 +141,10 @@ def combine_data_set():
 
 
 def generate_dev_result():
-    # dev_data_file = r'data\dev_small.json'
-    # dev_result_file = r'data\dev_small_result.json'
-    dev_data_file = r'data\dev_big.json'
-    dev_result_file = r'data\dev_big_result.json'
+    # dev_data_file = r'..\data\dev_small.json'
+    # dev_result_file = r'..\data\dev_small_result.json'
+    dev_data_file = r'..\data\dev_big.json'
+    dev_result_file = r'..\data\dev_big_result.json'
 
     with open(dev_data_file, 'r', encoding='utf-8') as f_in:
         dev_date = json.load(f_in)
@@ -165,27 +165,27 @@ def generate_dev_result():
 def convert_cail2019_data(dataset='train', separate_paragraph=False):
     if dataset == 'train':
         input_file = r'C:\Works\DataSet\CAIL\CAIL2019\big_train_data.json'
-        output_file = r'data\train_2019.json'
+        output_file = r'..\data\train_2019.json'
         if separate_paragraph:
-            converted_file = r'data\train_2019_converted.json'
+            converted_file = r'..\data\train_2019_converted.json'
         else:
-            converted_file = r'data\train_2019_1sentence_converted.json'
+            converted_file = r'..\data\train_2019_1sentence_converted.json'
         id_prefix = ''
     elif dataset == 'dev':
         input_file = r'C:\Works\DataSet\CAIL\CAIL2019\dev_ground_truth.json'
-        output_file = r'data\dev_2019.json'
+        output_file = r'..\data\dev_2019.json'
         if separate_paragraph:
-            converted_file = r'data\dev_2019_converted.json'
+            converted_file = r'..\data\dev_2019_converted.json'
         else:
-            converted_file = r'data\dev_2019_1sentence_converted.json'
+            converted_file = r'..\data\dev_2019_1sentence_converted.json'
         id_prefix = 'cail2019_dev_'
     elif dataset == 'test':
         input_file = r'C:\Works\DataSet\CAIL\CAIL2019\test_ground_truth.json'
-        output_file = r'data\test_2019.json'
+        output_file = r'..\data\test_2019.json'
         if separate_paragraph:
-            converted_file = r'data\test_2019_converted.json'
+            converted_file = r'..\data\test_2019_converted.json'
         else:
-            converted_file = r'data\test_2019_1sentence_converted.json'
+            converted_file = r'..\data\test_2019_1sentence_converted.json'
         id_prefix = 'cail2019_test_'
 
     with open(input_file, 'r', encoding='utf-8') as f_in:
@@ -324,6 +324,9 @@ def separate_sentence(text, separators=None, non_starting_chars=None):
     """ Separate a sentence by any separator listed in separators.
     A separator can be a group of charactors.
     A non-starting charactor following a separator forbids the separation."""
+    if len(text) == 0:
+        return [], []
+
     if separators is None:
         separators = ['。', '？', '！', '；', r'\?', '!', ';', ',', '，']
 
@@ -346,25 +349,25 @@ def convert_cmrc2018_data(dataset='train', separate_paragraph=False):
     id_prefix = 'CMRC2018_'
     if dataset == 'train':
         input_file = r'C:\Works\DataSet\CMRC2018\cmrc2018_train.json'
-        output_file = r'data\cmrc2018_train.json'
+        output_file = r'..\data\cmrc2018_train.json'
         if separate_paragraph:
-            converted_file = r'data\cmrc2018_train_converted.json'
+            converted_file = r'..\data\cmrc2018_train_converted.json'
         else:
-            converted_file = r'data\cmrc2018_train_1sentence_converted.json'
+            converted_file = r'..\data\cmrc2018_train_1sentence_converted.json'
     elif dataset == 'dev':
         input_file = r'C:\Works\DataSet\CMRC2018\cmrc2018_dev.json'
-        output_file = r'data\cmrc2018_dev.json'
+        output_file = r'..\data\cmrc2018_dev.json'
         if separate_paragraph:
-            converted_file = r'data\cmrc2018_dev_converted.json'
+            converted_file = r'..\data\cmrc2018_dev_converted.json'
         else:
-            converted_file = r'data\cmrc2018_dev_1sentence_converted.json'
+            converted_file = r'..\data\cmrc2018_dev_1sentence_converted.json'
     elif dataset == 'trial':
         input_file = r'C:\Works\DataSet\CMRC2018\cmrc2018_trial.json'
-        output_file = r'data\cmrc2018_trial.json'
+        output_file = r'..\data\cmrc2018_trial.json'
         if separate_paragraph:
-            converted_file = r'data\cmrc2018_trial_converted.json'
+            converted_file = r'..\data\cmrc2018_trial_converted.json'
         else:
-            converted_file = r'data\cmrc2018_trial_1sentence_converted.json'
+            converted_file = r'..\data\cmrc2018_trial_1sentence_converted.json'
 
     if os.path.isfile(output_file):
         with open(output_file, 'r', encoding='utf-8') as f_in:
@@ -469,8 +472,8 @@ def convert_cmrc2018_data(dataset='train', separate_paragraph=False):
 def convert_ant_contract_data(dataset='dev'):
     if dataset == 'dev':
         input_file = r'C:\Works\DataSet\Ant_Contract\ant_contract_mrc_dev.json'
-        output_file = r'data\ant_contract.json'
-        converted_file = r'data\ant_contract_mrc_dev_converted.json'
+        output_file = r'..\data\ant_contract.json'
+        converted_file = r'..\data\ant_contract_mrc_dev_converted.json'
         id_prefix = ''
 
     with open(input_file, 'r', encoding='utf-8') as f_in:
@@ -505,7 +508,7 @@ def convert_ant_contract_data(dataset='dev'):
 
 
 def generate_test_file():
-    data_file = r'data/dev.json'
+    data_file = r'../data/dev.json'
     with open(data_file, 'r', encoding='utf-8') as f_in:
         data = json.load(f_in)
 
@@ -513,16 +516,16 @@ def generate_test_file():
         item.pop("answer")
         item.pop("supporting_facts")
 
-    test_file = "./input/data.json"
+    test_file = "../input/data.json"
     with open(test_file, 'w', encoding='utf-8') as f_out:
         json.dump(data, f_out, ensure_ascii=False, indent=4)
 
 
 def analyze_data():
-    # data_file = r'data/train.json'
-    # data_file = r'data/dev.json'
-    data_file = r'data/train_2019_1sentence_converted.json'
-    # data_file = r'data/data_combine2019_1sentence/train.json'
+    # data_file = r'../data/train.json'
+    # data_file = r'../data/dev.json'
+    data_file = r'../data/train_2019_1sentence_converted.json'
+    # data_file = r'../data/data_combine2019_1sentence/train.json'
 
     with open(data_file, 'r', encoding='utf-8') as f_in:
         data = json.load(f_in)
@@ -564,10 +567,10 @@ def augment_data_single_hop(num_delete=3, num_shuffle=3):
     :param num_shuffle:
     :return:
     """
-    # in_file = r'data/all_2019_converted.json'
-    # out_file = r'data/all_2019_1sentence_converted_augmented.json'
-    in_file = r'data/cmrc2018_all_converted.json'
-    out_file = r'data/cmrc2018_all_1sentence_converted_augmented.json'
+    # in_file = r'../data/all_2019_converted.json'
+    # out_file = r'../data/all_2019_1sentence_converted_augmented.json'
+    in_file = r'../data/cmrc2018_all_converted.json'
+    out_file = r'../data/cmrc2018_all_1sentence_converted_augmented.json'
 
     with open(in_file, 'r', encoding='utf-8') as f_in:
         data = json.load(f_in)
@@ -642,8 +645,8 @@ def augment_data_multi_hop(num_delete=10, num_shuffle=10):
     :param num_shuffle:
     :return:
     """
-    in_file = r'data/train_big_combine_answer.json'
-    out_file = r'data/train_big_combine_answer_augmented.json'
+    in_file = r'../data/train_big_combine_answer.json'
+    out_file = r'../data/train_big_combine_answer_augmented.json'
 
     with open(in_file, 'r', encoding='utf-8') as f_in:
         data = json.load(f_in)
@@ -716,6 +719,6 @@ if __name__ == '__main__':
 
     # analyze_data()
 
-    # with open(r'data/data_combine2019all_1sentence_augmented/train.json', 'r', encoding='utf-8') as f_in:
+    # with open(r'../data/data_combine2019all_1sentence_augmented/train.json', 'r', encoding='utf-8') as f_in:
     #     data = json.load(f_in)
     # print(len(data))

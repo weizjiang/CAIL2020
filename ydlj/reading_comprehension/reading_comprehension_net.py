@@ -2111,9 +2111,13 @@ class ReadingComprehensionModel:
                     print("gold support facts: {}".format(example_dict[cur_id].sup_fact_id))
 
         prediction = {'answer': answer_dict, 'sp': support_fact_dict}
-        os.makedirs(os.path.dirname(result_file), exist_ok=True)
-        with open(result_file, 'w', encoding='utf8') as f:
-            json.dump(prediction, f, indent=4, ensure_ascii=False)
+
+        if len(result_file) > 0:
+            os.makedirs(os.path.dirname(result_file), exist_ok=True)
+            with open(result_file, 'w', encoding='utf8') as f:
+                json.dump(prediction, f, indent=4, ensure_ascii=False)
+
+        return prediction
 
     def tokenize(self, samples, max_input_len=None):
         if max_input_len is None:
