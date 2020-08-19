@@ -56,8 +56,8 @@ if __name__ == '__main__':
     with open_dataset_file(DataSet.get('DevSetFeatureFile')) as f:
         dev_set_features = pickle.load(f)
 
-    # # continue training
-    # RCModel.load_model(r'runs/rc_20200715-172519', 'L')
+    # continue training
+    RCModel.load_model(r'runs/rc_20200731-101153', 'L')
 
     RCModel.fit(train_set=train_set_features,
                 validation_set=dev_set_features,

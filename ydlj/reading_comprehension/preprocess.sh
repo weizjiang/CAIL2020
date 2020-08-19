@@ -13,7 +13,7 @@ python data_process.py \
     --tokenizer_path=$tokenizer_path \
     --full_data=${INPUT_TRAIN_FILE} \
     --example_output=${OUTPUT_DIR}/train_example.pkl.gz \
-    --feature_output=${OUTPUT_DIR}/train_features \
+    --feature_output=${OUTPUT_DIR}/train_feature.pkl.gz \
 
 python data_process.py \
     --tokenizer_path=$tokenizer_path \

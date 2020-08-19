@@ -14,22 +14,22 @@ DataSet: {
   # train set example file path
 #  TrainSetExampleFile: '../data/dev_debug_example.pkl.gz',
 #  TrainSetExampleFile: '../data/data_correct_span/train_example.pkl.gz',
-  TrainSetExampleFile: '../data/data_combine2019_1sentence/train_example.pkl.gz',
+  TrainSetExampleFile: '../data/data_big_combine2019all_cmrc2018all_1sentence_augmented/train_example.pkl.gz',
 
   # train set reature file path
 #  TrainSetFeatureFile: '../data/dev_debug_features/',
 #  TrainSetFeatureFile: '../data/data_correct_span/train_feature.pkl.gz',
-  TrainSetFeatureFile: '../data/data_combine2019_1sentence/train_feature.pkl.gz',
+  TrainSetFeatureFile: '../data/data_big_combine2019all_cmrc2018all_1sentence_augmented/train_features/',
 
   # dev set example file path
 #  DevSetExampleFile: '../data/dev_debug_example.pkl.gz',
 #  DevSetExampleFile: '../data/data_correct_span/dev_example.pkl.gz',
-  DevSetExampleFile: '../data/data_combine2019_1sentence/dev_example.pkl.gz',
+  DevSetExampleFile: '../data/data_big_combine2019all_cmrc2018all_1sentence_augmented/dev_example.pkl.gz',
 
   # dev set reature file path
 #  DevSetFeatureFile: '../data/dev_debug_feature.pkl.gz',
 #  DevSetFeatureFile: '../data/data_correct_span/dev_feature.pkl.gz',
-  DevSetFeatureFile: '../data/data_combine2019_1sentence/dev_feature.pkl.gz',
+  DevSetFeatureFile: '../data/data_big_combine2019all_cmrc2018all_1sentence_augmented/dev_feature.pkl.gz',
   }
 
 ################################################################################
@@ -91,7 +91,7 @@ BERT: {
   # 'embedding': embedding layer
   # number: layer number
   # start-end: from layer start to layer end (included)
-  frozen_layers: ['embedding', '0-10']
+  frozen_layers: ['embedding', '0-5']
   }
 
 ALBERT: {
@@ -148,30 +148,30 @@ sentence_embed_size: 256
 # 'AvgPoolDense': average pooling and full connect layer
 # 'AvgMaxPoolDense': concatenate average pooling and max pooling, followed by a full connect layer
 # 'SharedBiLSTM_2EndPoolDense': shared BiLSTM, pooling from 2 ends for each sentence/entity
-sentence_embedding_type: 'MaxPoolDense'
+sentence_embedding_type: 'SharedBiLSTM_2EndPoolDense'
 
 # dropout rate
-dropout_rate: 0.2
+dropout_rate: 0.0
 
 # CNN configurations
 CNN: {
   # number of layers
-  NumLayer: 3,
+  NumLayer: 1,
 
   # filter size for each layer
-  FilterSize: [2, 2, 2],
+  FilterSize: [3],
 
   # number of convolution output channels for each layer
-  ChannelSize: [256, 512, 512],
+  ChannelSize: [256],
 
   # stride size after the convolution for each layer
-  ConvStride: [1, 1, 1],
+  ConvStride: [1],
 
   # max-pooling size for each layer
   # For the last layer, setting '-1' means pooling over the whole time axis; otherwise, the time dimenstion and
   # the channel dimention are flattened before passing to the full-connect layer, in which case max_input_len is
   # assumed as the fixed sentence length after padding, not allowing different size for testing.
-  PoolSize: [2, 2, -1],
+  PoolSize: [-1],
 
   # activation of the final full-connection layer
   # 'none': default, linear activation
@@ -206,7 +206,7 @@ support_fact_reasoning_model: 'Transformer_2Type'
 support_fact_transformer: {
   # hidden_size should equal to sentence_embed_size
   hidden_size: 256,
-  num_hidden_layers: 2,
+  num_hidden_layers: 8,
   num_attention_heads: 8,
   num_sigmoid_attention_heads: 0,
   num_tanh_attention_heads: 0,
@@ -219,11 +219,11 @@ support_fact_transformer: {
 
 # self-attention parameters for support fact reasoning model
 support_fact_self_attention: {
-  hidden_size: 512,
-  num_hidden_layers: 2,
-  num_attention_heads: 16,
-  num_sigmoid_attention_heads: 4,
-  num_tanh_attention_heads: 4,
+  hidden_size: 1024,
+  num_hidden_layers: 8,
+  num_attention_heads: 8,
+  num_sigmoid_attention_heads: 0,
+  num_tanh_attention_heads: 0,
   attention_probs_dropout_prob: 0.1,
   share_layer_weights: 2
 }
@@ -252,7 +252,7 @@ answer_pred_use_support_fact_embedding: 'SentenceEntityMean'
 # 'None': use token embedding (maybe extended with sentence and/or entity embeddings)
 # 'Transformer': Transformer
 # 'SelfAttention': self-attention
-answer_span_predict_model: 'None'
+answer_span_predict_model: 'Transformer'
 
 # transformer parameters for answer span predict model
 answer_span_transformer: {
@@ -265,7 +265,7 @@ answer_span_transformer: {
   num_attention_heads: 8,
   num_sigmoid_attention_heads: 0,
   num_tanh_attention_heads: 0,
-  intermediate_size: 1024,
+  intermediate_size: 3072,
   hidden_act: 'gelu',
   hidden_dropout_prob: 0.1,
   attention_probs_dropout_prob: 0.1,
@@ -287,7 +287,7 @@ answer_span_self_attention: {
 # whether to use query sentence embedding (output from support fact reasoning layer if applicable) only
 # if false, passing all token embeeding (output from answer span predict model) into a sentence embedding layer to get
 # the type embedding.
-answer_type_use_query_embedding_only: false
+answer_type_use_query_embedding_only: true
 
 # answer type embedding size
 # only applied when answer_type_use_query_embedding_only is false
@@ -315,13 +315,13 @@ span_loss_samples: 'NonSpan3Pos'
 
 # whether to use all samples to calculate support fact loss
 # if false, only consider samples with more than one sentences
-support_fact_loss_all_samples: true
+support_fact_loss_all_samples: false
 
 # whether to keep support fact labels for unknown data in training
 # This happens when context is truncated, and the answer may become unknown.
 # true: keep support facts
 # false: set support fact list empty
-keep_support_fact_for_unknown: true
+keep_support_fact_for_unknown: false
 
 # how to combine the support fact loss on different sentences
 # 'Mean': averge over all sentences
@@ -335,7 +335,7 @@ span_loss_weight: 1.0
 answer_type_loss_weight: 1.0
 
 # support tact loss weight
-support_fact_loss_weight: 5.0
+support_fact_loss_weight: 1.0
 
 ################################################################################
 # optimization parameters
@@ -363,7 +363,7 @@ momentum_rate: 0.9
 momentum_rate_2nd: 0.999
 
 # L2 regulizer coefficient
-L2_REG_LAMBDA: 0.000001
+L2_REG_LAMBDA: 0.0001
 
 # whether or not do L2 loss normalization using total number of parameters
 # default: false
@@ -379,15 +379,15 @@ grad_threshold: 5.0
 num_epoch: 50
 
 # batch_size
-batch_size: 32
+batch_size: 10
 
 # the uppper limit of single-sentence dataset batches in one epoch, ralative to multi-sentence batch number.
 # Single-sentence dataset cannot be used to train support facts.
 # -1 for no limit
-max_ratio_1sentence: 0.2
+max_ratio_1sentence: -1
 
 # number of samples for each validation step
-validate_size: 400
+validate_size: 1000
 
 # period for model saving, in number of steps
 # default: 50
