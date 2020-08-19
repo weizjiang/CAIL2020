@@ -307,7 +307,7 @@ class ReadingComprehensionModel:
         self.support_fact_loss_all_samples = config.get('support_fact_loss_all_samples', True)
         self.support_fact_loss_type = config.get('support_fact_loss_type', 'Mean')
         self.keep_support_fact_for_unknown = config.get('keep_support_fact_for_unknown', False)
-        self.span_loss_samples = config.get('span_loss_samples', 'NonSpan3Pos')
+        self.span_loss_samples = config.get('span_loss_samples', 'NonSpan1Pos')
         self.span_loss_weight = config.get('span_loss_weight', 1.0)
         self.answer_type_loss_weight = config.get('answer_type_loss_weight', 1.0)
         self.support_fact_loss_weight = config.get('support_fact_loss_weight', 1.0)
