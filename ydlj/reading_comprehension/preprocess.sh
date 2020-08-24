@@ -7,13 +7,14 @@ INPUT_DEV_FILE=$1/dev.json
 OUTPUT_DIR=$2 #this dir must the same as the data_dir in train.sh
 
 mkdir ${OUTPUT_DIR}
-tokenizer_path='/home/jiangwei/work/bert/chinese_roberta_wwm_ext_pytorch/'
+# tokenizer_path='/home/jiangwei/work/bert/chinese_roberta_wwm_ext_pytorch/'
+tokenizer_path='/home/jiangwei/PretrainedModel/OpenCLaP_ms_pytorch/'
 
 python data_process.py \
     --tokenizer_path=$tokenizer_path \
     --full_data=${INPUT_TRAIN_FILE} \
     --example_output=${OUTPUT_DIR}/train_example.pkl.gz \
-    --feature_output=${OUTPUT_DIR}/train_feature.pkl.gz \
+    --feature_output=${OUTPUT_DIR}/train_features \
 
 python data_process.py \
     --tokenizer_path=$tokenizer_path \

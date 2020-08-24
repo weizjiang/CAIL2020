@@ -61,7 +61,7 @@ if __name__ == '__main__':
     # RCModel.load_model(r'runs/rc_20200729-121944', 'B')
     # RCModel.load_model(r'runs/rc_20200729-115544', 'B')
     # RCModel.load_model(r'runs/rc_20200730-210101', 'B')
-    RCModel.load_model(r'runs/rc_20200731-101153', 'B')
+    # RCModel.load_model(r'runs/rc_20200731-101153', 'B')
     # RCModel.load_model(r'runs/rc_20200731-112631', 'B')
     # RCModel.load_model(r'runs/rc_20200731-213550', 'B')
     # RCModel.load_model(r'runs/rc_20200801-122142', 'B')
@@ -96,7 +96,12 @@ if __name__ == '__main__':
     # RCModel.load_model(r'runs/rc_20200817-204740', 'B')
     # RCModel.load_model(r'runs/rc_20200817-210827', 'B')
     
-    test_set_feature_file = '../data/data_big_combine2019all_cmrc2018all_1sentence/dev_feature.pkl.gz'
+    # test_set_feature_file = '../data/data_big_combine2019all_cmrc2018all_1sentence/dev_feature.pkl.gz'
+    
+    
+    RCModel.load_model(r'runs/rc_20200821-133913', 'B')
+    
+    test_set_feature_file = '../data/data_big_combine2019all_cmrc2018all_1sentence_augmented_OpenCLaP/dev_feature.pkl.gz'
     
     with gzip.open(test_set_feature_file, 'rb') as f:
         test_set_features = pickle.load(f)
