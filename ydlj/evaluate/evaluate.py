@@ -222,6 +222,7 @@ if __name__ == '__main__':
     # prediction_file = r'../reading_comprehension/results/result_rc_20200817-001603_threshold_0.5_restrict_span.json'
     # prediction_file = r'../reading_comprehension/results/result_rc_20200817-210827_threshold_0.5_restrict_span.json'
     # prediction_file = r'../reading_comprehension/results/result_rc_20200817-204740_threshold_0.5_restrict_span.json'
+    # prediction_file = r'../reading_comprehension/results/result_rc_20200821-133913_threshold_0.5_restrict_span.json'
 
     gold_file = r'../data/dev_big.json'
 
